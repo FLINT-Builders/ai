@@ -1,5 +1,11 @@
 # @ai-sdk/openai
 
+## 4.0.72
+
+### Patch Changes
+
+- e13c32f: fix(openai): include speech provider options in requests
+
 ## 4.0.71
 
 ### Patch Changes

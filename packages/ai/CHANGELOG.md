@@ -1,5 +1,18 @@
 # ai
 
+## 7.0.108
+
+### Patch Changes
+
+- 6317504: fix(ai): stop pending tool-call repairs when generation is cancelled
+- 3cb2dcd: fix(ai): preserve file data when adapting v3 language models
+- Updated dependencies [20dd00a]
+- Updated dependencies [7cf7cee]
+- Updated dependencies [c42576a]
+- Updated dependencies [d85dcf5]
+- Updated dependencies [fd9b3f3]
+  - @ai-sdk/gateway@4.0.88
+
 ## 7.0.107
 
 ### Patch Changes
