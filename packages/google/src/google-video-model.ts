@@ -294,24 +294,14 @@ export class GoogleVideoModel implements VideoModelV4 {
     const videos: Array<{ type: 'url'; url: string; mediaType: string }> = [];
     const videoMetadata: Array<{ uri: string }> = [];
 
-    // Get API key from headers to append to download URLs
-    const resolvedHeaders = await resolve(this.config.headers);
-    const apiKey = resolvedHeaders?.['x-goog-api-key'];
-
     for (const generatedSample of response.generateVideoResponse
       .generatedSamples) {
       if (generatedSample.video?.uri) {
-        // Append the API key to the download URL for authentication, but only
-        // when the response-supplied URI stays on the provider's own origin —
-        // otherwise the key would leak to whatever host the response names.
-        const urlWithAuth =
-          apiKey && isSameOrigin(generatedSample.video.uri, this.config.baseURL)
-            ? `${generatedSample.video.uri}${generatedSample.video.uri.includes('?') ? '&' : '?'}key=${apiKey}`
-            : generatedSample.video.uri;
-
+        // The URL is returned to callers as-is, so it must not carry the API
+        // key; downloads are authenticated via `getDownloadHeaders` instead.
         videos.push({
           type: 'url',
-          url: urlWithAuth,
+          url: generatedSample.video.uri,
           mediaType: 'video/mp4',
         });
         videoMetadata.push({
@@ -438,6 +428,21 @@ export class GoogleVideoModel implements VideoModelV4 {
       [],
       currentDate,
     );
+  }
+
+  async getDownloadHeaders({
+    url,
+  }: {
+    url: string;
+  }): Promise<Record<string, string> | undefined> {
+    // Only authenticate downloads that stay on the provider's own origin;
+    // otherwise the key would leak to whatever host the response names.
+    if (!isSameOrigin(url, this.config.baseURL)) {
+      return undefined;
+    }
+
+    const apiKey = (await resolve(this.config.headers))?.['x-goog-api-key'];
+    return apiKey ? { 'x-goog-api-key': apiKey } : undefined;
   }
 }
 

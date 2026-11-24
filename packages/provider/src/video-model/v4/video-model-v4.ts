@@ -128,4 +128,21 @@ export type VideoModelV4 = {
      */
     headers?: Record<string, string | undefined>;
   }): PromiseLike<VideoModelV4OperationStatusResult>;
+
+  /**
+   * Optional method that returns the HTTP headers required to download a
+   * video that this model returned as a `url` (e.g. provider authentication),
+   * or `undefined` when the URL can be downloaded without extra headers.
+   *
+   * Video URLs are passed through to callers unchanged (e.g. by
+   * `experimental_getVideoStatus`), so they must never embed credentials.
+   * Headers returned here are only attached to the SDK's own download request
+   * and are dropped if that request is redirected to another origin.
+   */
+  getDownloadHeaders?(options: {
+    /**
+     * The video URL that will be downloaded.
+     */
+    url: string;
+  }): PromiseLike<Record<string, string | undefined> | undefined>;
 };

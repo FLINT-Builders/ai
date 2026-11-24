@@ -13,6 +13,7 @@ import {
   convertBase64ToUint8Array,
   delay as defaultDelay,
   generateId,
+  normalizeHeaders,
   withUserAgentSuffix,
   type DataContent,
   detectMediaType,
@@ -251,11 +252,16 @@ export async function experimental_generateVideo({
    * Custom download function for fetching videos from URLs.
    * Use `createDownload()` from `ai` to create a download function with custom size limits.
    *
+   * `headers` contains request headers the model requires for the download
+   * (e.g. provider authentication). They must only be sent to `url` and must
+   * not be forwarded on a redirect to another origin.
+   *
    * @default createDownload() (2 GiB limit)
    */
   download?: (options: {
     url: URL;
     abortSignal?: AbortSignal;
+    headers?: Record<string, string>;
   }) => Promise<{ data: Uint8Array; mediaType: string | undefined }>;
 
   /**
@@ -382,9 +388,15 @@ export async function experimental_generateVideo({
     for (const videoData of result.videos) {
       switch (videoData.type) {
         case 'url': {
+          const downloadHeaders = await model.getDownloadHeaders?.({
+            url: videoData.url,
+          });
           const { data, mediaType: downloadedMediaType } = await downloadFn({
             url: new URL(videoData.url),
             abortSignal,
+            ...(downloadHeaders != null
+              ? { headers: normalizeHeaders(downloadHeaders) }
+              : {}),
           });
 
           // Filter out generic/unknown media types that should fall through to detection
