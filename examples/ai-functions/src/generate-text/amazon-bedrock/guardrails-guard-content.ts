@@ -7,6 +7,7 @@ run(async () => {
     model: amazonBedrock('anthropic.claude-3-haiku-20240307-v1:0'),
     providerOptions: {
       bedrock: {
+        allowPartGuardContent: true,
         guardrailConfig: {
           guardrailIdentifier: '<your-guardrail-identifier>',
           guardrailVersion: '1',

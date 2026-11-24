@@ -547,6 +547,11 @@ export class AmazonBedrockChatLanguageModel implements LanguageModelV4 {
     const { system, messages } = await convertToAmazonBedrockChatMessages(
       filteredPrompt,
       isMistral,
+      {
+        allowPartGuardContent:
+          amazonBedrockOptions.allowPartGuardContent === true,
+        warnings,
+      },
     );
 
     // Filter out reasoningConfig from amazonBedrock provider options to prevent sending it to Bedrock API
@@ -555,6 +560,7 @@ export class AmazonBedrockChatLanguageModel implements LanguageModelV4 {
       additionalModelRequestFields: __,
       serviceTier: ___,
       structuredOutputMode: ____,
+      allowPartGuardContent: _____,
       ...filteredAmazonBedrockOptions
     } = providerOptions?.amazonBedrock ?? providerOptions?.bedrock ?? {};
 

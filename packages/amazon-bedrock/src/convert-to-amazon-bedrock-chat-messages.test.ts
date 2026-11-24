@@ -1,3 +1,4 @@
+import type { SharedV4Warning } from '@ai-sdk/provider';
 import type { AmazonBedrockReasoningMetadata } from './amazon-bedrock-chat-language-model';
 import { convertToAmazonBedrockChatMessages } from './convert-to-amazon-bedrock-chat-messages';
 import { describe, it, expect } from 'vitest';
@@ -626,22 +627,26 @@ describe('user messages', () => {
   });
 
   it('should convert text part to guardContent when guardContent provider option is true', async () => {
-    const { messages } = await convertToAmazonBedrockChatMessages([
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'text',
-            text: 'Grounding text',
-            providerOptions: {
-              amazonBedrock: {
-                guardContent: true,
+    const { messages } = await convertToAmazonBedrockChatMessages(
+      [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: 'Grounding text',
+              providerOptions: {
+                amazonBedrock: {
+                  guardContent: true,
+                },
               },
             },
-          },
-        ],
-      },
-    ]);
+          ],
+        },
+      ],
+      false,
+      { allowPartGuardContent: true },
+    );
 
     expect(messages).toEqual([
       {
@@ -660,23 +665,27 @@ describe('user messages', () => {
   });
 
   it('should convert text part to guardContent with qualifiers', async () => {
-    const { messages } = await convertToAmazonBedrockChatMessages([
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'text',
-            text: 'Grounding text',
-            providerOptions: {
-              amazonBedrock: {
-                guardContent: true,
-                guardContentQualifiers: ['grounding_source'],
+    const { messages } = await convertToAmazonBedrockChatMessages(
+      [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: 'Grounding text',
+              providerOptions: {
+                amazonBedrock: {
+                  guardContent: true,
+                  guardContentQualifiers: ['grounding_source'],
+                },
               },
             },
-          },
-        ],
-      },
-    ]);
+          ],
+        },
+      ],
+      false,
+      { allowPartGuardContent: true },
+    );
 
     expect(messages).toEqual([
       {
@@ -696,23 +705,27 @@ describe('user messages', () => {
   });
 
   it('should convert text part to guardContent with multiple qualifiers', async () => {
-    const { messages } = await convertToAmazonBedrockChatMessages([
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'text',
-            text: 'Query text',
-            providerOptions: {
-              amazonBedrock: {
-                guardContent: true,
-                guardContentQualifiers: ['grounding_source', 'query'],
+    const { messages } = await convertToAmazonBedrockChatMessages(
+      [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: 'Query text',
+              providerOptions: {
+                amazonBedrock: {
+                  guardContent: true,
+                  guardContentQualifiers: ['grounding_source', 'query'],
+                },
               },
             },
-          },
-        ],
-      },
-    ]);
+          ],
+        },
+      ],
+      false,
+      { allowPartGuardContent: true },
+    );
 
     expect(messages).toEqual([
       {
@@ -729,6 +742,88 @@ describe('user messages', () => {
         ],
       },
     ]);
+  });
+
+  it('should ignore part-level guardContent by default and warn once', async () => {
+    const warnings: SharedV4Warning[] = [];
+
+    const { messages } = await convertToAmazonBedrockChatMessages(
+      [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: 'Decoy text',
+              providerOptions: {
+                bedrock: {
+                  guardContent: true,
+                  guardContentQualifiers: ['query'],
+                },
+              },
+            },
+            {
+              type: 'file',
+              data: { type: 'data' as const, data: 'AAECAw==' },
+              mediaType: 'image/png',
+              providerOptions: { amazonBedrock: { guardContent: true } },
+            },
+            { type: 'text', text: 'Unmarked text' },
+          ],
+        },
+        { role: 'assistant', content: [{ type: 'text', text: 'Noted.' }] },
+        {
+          role: 'user',
+          content: [{ type: 'text', text: 'Follow-up text' }],
+        },
+      ],
+      false,
+      { warnings },
+    );
+
+    expect(messages).toEqual([
+      {
+        role: 'user',
+        content: [
+          { text: 'Decoy text' },
+          { image: { format: 'png', source: { bytes: 'AAECAw==' } } },
+          { text: 'Unmarked text' },
+        ],
+      },
+      { role: 'assistant', content: [{ text: 'Noted.' }] },
+      { role: 'user', content: [{ text: 'Follow-up text' }] },
+    ]);
+    expect(warnings).toEqual([
+      {
+        type: 'unsupported',
+        feature: 'guardContent',
+        details:
+          'Part-level guardContent provider options are ignored unless the allowPartGuardContent provider option is set to true.',
+      },
+    ]);
+  });
+
+  it('should not warn when no part requests guardContent', async () => {
+    const warnings: SharedV4Warning[] = [];
+
+    await convertToAmazonBedrockChatMessages(
+      [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: 'Normal text',
+              providerOptions: { bedrock: { guardContent: false } },
+            },
+          ],
+        },
+      ],
+      false,
+      { warnings },
+    );
+
+    expect(warnings).toEqual([]);
   });
 
   it('should convert text part as normal text when guardContent is false', async () => {
@@ -776,26 +871,30 @@ describe('user messages', () => {
   it('should convert image part to guardContent when guardContent provider option is true', async () => {
     const imageData = new Uint8Array([0, 1, 2, 3]);
 
-    const { messages } = await convertToAmazonBedrockChatMessages([
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'file',
-            data: {
-              type: 'data' as const,
-              data: Buffer.from(imageData).toString('base64'),
-            },
-            mediaType: 'image/png',
-            providerOptions: {
-              amazonBedrock: {
-                guardContent: true,
+    const { messages } = await convertToAmazonBedrockChatMessages(
+      [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'file',
+              data: {
+                type: 'data' as const,
+                data: Buffer.from(imageData).toString('base64'),
+              },
+              mediaType: 'image/png',
+              providerOptions: {
+                amazonBedrock: {
+                  guardContent: true,
+                },
               },
             },
-          },
-        ],
-      },
-    ]);
+          ],
+        },
+      ],
+      false,
+      { allowPartGuardContent: true },
+    );
 
     expect(messages).toEqual([
       {

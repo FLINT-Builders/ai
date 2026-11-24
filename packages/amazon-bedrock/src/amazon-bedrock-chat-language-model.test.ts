@@ -1795,6 +1795,7 @@ describe('doStream', () => {
       includeRawChunks: false,
       providerOptions: {
         bedrock: {
+          allowPartGuardContent: true,
           guardrailConfig: {
             guardrailIdentifier: '-1',
             guardrailVersion: '1',
@@ -4402,6 +4403,7 @@ describe('doGenerate', () => {
       ],
       providerOptions: {
         bedrock: {
+          allowPartGuardContent: true,
           guardrailConfig: {
             guardrailIdentifier: '-1',
             guardrailVersion: '1',
@@ -4411,7 +4413,9 @@ describe('doGenerate', () => {
       },
     });
 
-    expect(await server.calls[0].requestBodyJson).toMatchObject({
+    const requestBody = await server.calls[0].requestBodyJson;
+    expect(requestBody).not.toHaveProperty('allowPartGuardContent');
+    expect(requestBody).toMatchObject({
       messages: [
         {
           role: 'user',
@@ -4466,6 +4470,11 @@ describe('doGenerate', () => {
           ],
         },
       ],
+      providerOptions: {
+        bedrock: {
+          allowPartGuardContent: true,
+        },
+      },
     });
 
     expect(await server.calls[0].requestBodyJson).toMatchObject({
@@ -4486,6 +4495,74 @@ describe('doGenerate', () => {
         },
       ],
     });
+  });
+
+  it('should ignore part-level guardContent unless allowPartGuardContent is set', async () => {
+    prepareJsonFixtureResponse('amazon-bedrock-text');
+
+    const result = await model.doGenerate({
+      prompt: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: 'Decoy text',
+              providerOptions: {
+                bedrock: {
+                  guardContent: true,
+                  guardContentQualifiers: ['query'],
+                },
+              },
+            },
+            {
+              type: 'file',
+              data: { type: 'data' as const, data: 'AAECAw==' },
+              mediaType: 'image/png',
+              providerOptions: { amazonBedrock: { guardContent: true } },
+            },
+            { type: 'text', text: 'Unmarked text' },
+          ],
+        },
+      ],
+      providerOptions: {
+        bedrock: {
+          guardrailConfig: {
+            guardrailIdentifier: '-1',
+            guardrailVersion: '1',
+            trace: 'enabled',
+          },
+        },
+      },
+    });
+
+    const requestBody = await server.calls[0].requestBodyJson;
+    expect(JSON.stringify(requestBody)).not.toContain('guardContent');
+    expect(requestBody).toMatchObject({
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { text: 'Decoy text' },
+            { image: { format: 'png', source: { bytes: 'AAECAw==' } } },
+            { text: 'Unmarked text' },
+          ],
+        },
+      ],
+      guardrailConfig: {
+        guardrailIdentifier: '-1',
+        guardrailVersion: '1',
+        trace: 'enabled',
+      },
+    });
+    expect(result.warnings).toEqual([
+      {
+        type: 'unsupported',
+        feature: 'guardContent',
+        details:
+          'Part-level guardContent provider options are ignored unless the allowPartGuardContent provider option is set to true.',
+      },
+    ]);
   });
 
   it('should surface guardrail intervention as a content-filter finish reason with trace metadata', async () => {

@@ -8,6 +8,7 @@ run(async () => {
     model: amazonBedrock('anthropic.claude-3-5-sonnet-20241022-v2:0'),
     providerOptions: {
       bedrock: {
+        allowPartGuardContent: true,
         guardrailConfig: {
           guardrailIdentifier: '<your-guardrail-identifier>',
           guardrailVersion: '1',
