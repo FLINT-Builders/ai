@@ -421,7 +421,7 @@ describe('convertToOpenAIResponsesInput', () => {
       ]);
     });
 
-    it('should convert messages with image parts using file_id (deprecated)', async () => {
+    it('should send inline image data that looks like a file id as image content', async () => {
       const result = await convertToOpenAIResponsesInput({
         prompt: [
           {
@@ -438,7 +438,6 @@ describe('convertToOpenAIResponsesInput', () => {
         toolNameMapping: testToolNameMapping,
         systemMessageMode: 'system',
         providerOptionsName: 'openai',
-        fileIdPrefixes: ['file-'],
         store: true,
       });
 
@@ -448,7 +447,7 @@ describe('convertToOpenAIResponsesInput', () => {
           content: [
             {
               type: 'input_image',
-              file_id: 'file-12345',
+              image_url: 'data:image/png;base64,file-12345',
             },
           ],
         },
@@ -706,7 +705,7 @@ describe('convertToOpenAIResponsesInput', () => {
       ]);
     });
 
-    it('should convert messages with PDF file parts using file_id (deprecated)', async () => {
+    it('should send inline PDF data that looks like a file id as file content', async () => {
       const result = await convertToOpenAIResponsesInput({
         prompt: [
           {
@@ -723,7 +722,6 @@ describe('convertToOpenAIResponsesInput', () => {
         toolNameMapping: testToolNameMapping,
         systemMessageMode: 'system',
         providerOptionsName: 'openai',
-        fileIdPrefixes: ['file-'],
         store: true,
       });
 
@@ -733,7 +731,8 @@ describe('convertToOpenAIResponsesInput', () => {
           content: [
             {
               type: 'input_file',
-              file_id: 'file-pdf-12345',
+              filename: 'part-0.pdf',
+              file_data: 'data:application/pdf;base64,file-pdf-12345',
             },
           ],
         },
@@ -1101,197 +1100,6 @@ describe('convertToOpenAIResponsesInput', () => {
                 type: 'input_file',
                 filename: 'test.pdf',
                 file_data: 'data:application/pdf;base64,assistant-abc123',
-              },
-            ],
-          },
-        ]);
-      });
-    });
-
-    describe('deprecated fileIdPrefixes support', () => {
-      it('should convert image parts with custom prefix', async () => {
-        const result = await convertToOpenAIResponsesInput({
-          toolNameMapping: testToolNameMapping,
-          prompt: [
-            {
-              role: 'user',
-              content: [
-                {
-                  type: 'file',
-                  mediaType: 'image/png',
-                  data: { type: 'data' as const, data: 'assistant-img-abc123' },
-                },
-              ],
-            },
-          ],
-          systemMessageMode: 'system',
-          providerOptionsName: 'openai',
-          fileIdPrefixes: ['assistant-'],
-          store: true,
-        });
-
-        expect(result.input).toEqual([
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'input_image',
-                file_id: 'assistant-img-abc123',
-              },
-            ],
-          },
-        ]);
-      });
-
-      it('should convert PDF parts with custom prefix', async () => {
-        const result = await convertToOpenAIResponsesInput({
-          prompt: [
-            {
-              role: 'user',
-              content: [
-                {
-                  type: 'file',
-                  mediaType: 'application/pdf',
-                  data: { type: 'data' as const, data: 'assistant-pdf-abc123' },
-                },
-              ],
-            },
-          ],
-          toolNameMapping: testToolNameMapping,
-          systemMessageMode: 'system',
-          providerOptionsName: 'openai',
-          fileIdPrefixes: ['assistant-'],
-          store: true,
-        });
-
-        expect(result.input).toEqual([
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'input_file',
-                file_id: 'assistant-pdf-abc123',
-              },
-            ],
-          },
-        ]);
-      });
-
-      it('should support multiple file ID prefixes', async () => {
-        const result = await convertToOpenAIResponsesInput({
-          prompt: [
-            {
-              role: 'user',
-              content: [
-                {
-                  type: 'file',
-                  mediaType: 'image/png',
-                  data: { type: 'data' as const, data: 'assistant-img-abc123' },
-                },
-                {
-                  type: 'file',
-                  mediaType: 'application/pdf',
-                  data: { type: 'data' as const, data: 'file-pdf-xyz789' },
-                },
-              ],
-            },
-          ],
-          toolNameMapping: testToolNameMapping,
-          systemMessageMode: 'system',
-          providerOptionsName: 'openai',
-          fileIdPrefixes: ['assistant-', 'file-'],
-          store: true,
-        });
-
-        expect(result.input).toEqual([
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'input_image',
-                file_id: 'assistant-img-abc123',
-              },
-              {
-                type: 'input_file',
-                file_id: 'file-pdf-xyz789',
-              },
-            ],
-          },
-        ]);
-      });
-
-      it('should treat all file data as base64 when fileIdPrefixes is undefined', async () => {
-        const result = await convertToOpenAIResponsesInput({
-          prompt: [
-            {
-              role: 'user',
-              content: [
-                {
-                  type: 'file',
-                  mediaType: 'image/png',
-                  data: { type: 'data' as const, data: 'file-12345' },
-                },
-                {
-                  type: 'file',
-                  mediaType: 'application/pdf',
-                  data: { type: 'data' as const, data: 'assistant-abc123' },
-                  filename: 'test.pdf',
-                },
-              ],
-            },
-          ],
-          toolNameMapping: testToolNameMapping,
-          systemMessageMode: 'system',
-          providerOptionsName: 'openai',
-          store: true,
-        });
-
-        expect(result.input).toEqual([
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'input_image',
-                image_url: 'data:image/png;base64,file-12345',
-              },
-              {
-                type: 'input_file',
-                filename: 'test.pdf',
-                file_data: 'data:application/pdf;base64,assistant-abc123',
-              },
-            ],
-          },
-        ]);
-      });
-
-      it('should handle empty fileIdPrefixes array', async () => {
-        const result = await convertToOpenAIResponsesInput({
-          prompt: [
-            {
-              role: 'user',
-              content: [
-                {
-                  type: 'file',
-                  mediaType: 'image/png',
-                  data: { type: 'data' as const, data: 'file-12345' },
-                },
-              ],
-            },
-          ],
-          toolNameMapping: testToolNameMapping,
-          systemMessageMode: 'system',
-          providerOptionsName: 'openai',
-          fileIdPrefixes: [],
-          store: true,
-        });
-
-        expect(result.input).toEqual([
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'input_image',
-                image_url: 'data:image/png;base64,file-12345',
               },
             ],
           },

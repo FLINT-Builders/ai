@@ -1617,13 +1617,13 @@ const result = await generateText({
 The model will have access to the image and will respond to questions about it.
 The image should be passed using the `image` field.
 
-You can also pass a file-id from the OpenAI Files API.
+You can also pass a file-id from the OpenAI Files API as a provider reference.
 
 ```ts
 {
   type: 'file',
   mediaType: 'image',
-  data: 'file-8EFBcWHsQxZV7YGezBC1fq'
+  data: { type: 'reference', reference: { openai: 'file-8EFBcWHsQxZV7YGezBC1fq' } },
 }
 ```
 
@@ -1665,12 +1665,12 @@ const result = await generateText({
 });
 ```
 
-You can also pass a file-id from the OpenAI Files API.
+You can also pass a file-id from the OpenAI Files API as a provider reference.
 
 ```ts
 {
   type: 'file',
-  data: 'file-8EFBcWHsQxZV7YGezBC1fq',
+  data: { type: 'reference', reference: { openai: 'file-8EFBcWHsQxZV7YGezBC1fq' } },
   mediaType: 'application/pdf',
 }
 ```
@@ -2460,12 +2460,12 @@ respond to questions about it.
 The PDF file should be passed using the `data` field,
 and the `mediaType` should be set to `'application/pdf'`.
 
-You can also pass a file-id from the OpenAI Files API.
+You can also pass a file-id from the OpenAI Files API as a provider reference.
 
 ```ts
 {
   type: 'file',
-  data: 'file-8EFBcWHsQxZV7YGezBC1fq',
+  data: { type: 'reference', reference: { openai: 'file-8EFBcWHsQxZV7YGezBC1fq' } },
   mediaType: 'application/pdf',
 }
 ```

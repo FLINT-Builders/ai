@@ -73,7 +73,6 @@ function createModel(modelId: string) {
       `https://test-resource.openai.azure.com/openai/v1${path}`,
     headers: () => ({ Authorization: `Bearer APIKEY` }),
     generateId: mockId(),
-    fileIdPrefixes: ['assistant-'],
   });
 }
 
@@ -1382,7 +1381,7 @@ describe('responses', () => {
       );
     });
 
-    it('should handle Azure file IDs with assistant- prefix', async () => {
+    it('should send inline image data with assistant- prefix as image content', async () => {
       prepareJsonFixtureResponse('azure-text.1');
 
       const TEST_PROMPT_WITH_AZURE_FILE: LanguageModelV4Prompt = [
@@ -1409,13 +1408,16 @@ describe('responses', () => {
           role: 'user',
           content: [
             { type: 'input_text', text: 'Analyze this image' },
-            { type: 'input_image', file_id: 'assistant-abc123' },
+            {
+              type: 'input_image',
+              image_url: 'data:image/jpeg;base64,assistant-abc123',
+            },
           ],
         },
       ]);
     });
 
-    it('should handle PDF files with assistant- prefix', async () => {
+    it('should send inline PDF data with assistant- prefix as file content', async () => {
       prepareJsonFixtureResponse('azure-text.1');
 
       const TEST_PROMPT_WITH_AZURE_PDF: LanguageModelV4Prompt = [
@@ -1442,7 +1444,11 @@ describe('responses', () => {
           role: 'user',
           content: [
             { type: 'input_text', text: 'Analyze this PDF' },
-            { type: 'input_file', file_id: 'assistant-pdf123' },
+            {
+              type: 'input_file',
+              filename: 'part-1.pdf',
+              file_data: 'data:application/pdf;base64,assistant-pdf123',
+            },
           ],
         },
       ]);
