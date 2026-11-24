@@ -13,6 +13,11 @@ import {
 } from '@ai-sdk/harness/bridge';
 import { createCompactionLatch } from './compaction-latch';
 import type { StartMessage } from '../claude-code-bridge-protocol';
+import {
+  CLAUDE_CODE_NATIVE_TOOL_KINDS,
+  claudeCodeNativeToolKind,
+  type ClaudeCodeNativeToolKind,
+} from '../claude-code-native-tool-kinds';
 import { randomUUID } from 'node:crypto';
 import { argv, env as procEnv, stdout } from 'node:process';
 
@@ -86,36 +91,6 @@ const NATIVE_TO_COMMON: Readonly<Record<string, CommonBuiltinToolName>> = {
   Grep: 'grep',
   WebSearch: 'webSearch',
   AskUserQuestion: 'askUserQuestions',
-};
-
-const NATIVE_TOOL_KINDS: Readonly<
-  Record<string, 'readonly' | 'edit' | 'bash'>
-> = {
-  Read: 'readonly',
-  Glob: 'readonly',
-  Grep: 'readonly',
-  WebSearch: 'readonly',
-  WebFetch: 'readonly',
-  TaskGet: 'readonly',
-  TaskList: 'readonly',
-  TaskOutput: 'readonly',
-  ListMcpResources: 'readonly',
-  ReadMcpResource: 'readonly',
-  Write: 'edit',
-  Edit: 'edit',
-  NotebookEdit: 'edit',
-  TodoWrite: 'edit',
-  TaskCreate: 'edit',
-  TaskUpdate: 'edit',
-  TaskStop: 'edit',
-  EnterWorktree: 'edit',
-  ExitWorktree: 'edit',
-  ExitPlanMode: 'edit',
-  Skill: 'readonly',
-  AskUserQuestion: 'readonly',
-  ToolSearch: 'readonly',
-  Bash: 'bash',
-  Monitor: 'bash',
 };
 
 function toCommonName(nativeName: string): CommonBuiltinToolName | string {
@@ -311,7 +286,9 @@ function createPermissionSettings(input: {
   inactiveNativeTools: ReadonlySet<string>;
 }): Record<string, unknown> | undefined {
   const askRules = new Set<string>();
-  for (const [nativeName, kind] of Object.entries(NATIVE_TOOL_KINDS)) {
+  for (const [nativeName, kind] of Object.entries(
+    CLAUDE_CODE_NATIVE_TOOL_KINDS,
+  )) {
     if (
       input.inactiveNativeTools.has(nativeName) ||
       (input.permissionMode === 'allow-reads'
@@ -337,7 +314,11 @@ function nativeToolRequiresApproval(input: {
   permissionMode: 'allow-reads' | 'allow-edits' | 'allow-all';
 }): boolean {
   if (input.permissionMode === 'allow-all') return false;
-  const kind = NATIVE_TOOL_KINDS[input.nativeName] ?? 'edit';
+  // External MCP tools are not native built-ins; `permissionMode` gates them
+  // like edits.
+  const kind: ClaudeCodeNativeToolKind = isExternalMcpTool(input.nativeName)
+    ? 'edit'
+    : claudeCodeNativeToolKind(input.nativeName);
   if (input.permissionMode === 'allow-edits') return kind === 'bash';
   return kind === 'edit' || kind === 'bash';
 }

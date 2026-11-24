@@ -71,6 +71,7 @@ import {
   type InboundMessage,
   type OutboundMessage,
 } from './claude-code-bridge-protocol';
+import { CLAUDE_CODE_NATIVE_TOOL_KINDS } from './claude-code-native-tool-kinds';
 import type { ClaudeCodeThinkingConfig } from './claude-code-thinking';
 import { VERSION } from './version';
 
@@ -759,6 +760,30 @@ const CLAUDE_CODE_BUILTIN_TOOLS = {
     toolUseKind: 'edit',
   },
 } as const satisfies Record<string, HarnessV1BuiltinTool<any, any>>;
+
+type ClaudeCodeBuiltinTools = typeof CLAUDE_CODE_BUILTIN_TOOLS;
+
+type DeclaredNativeToolKinds = {
+  [K in keyof ClaudeCodeBuiltinTools as ClaudeCodeBuiltinTools[K] extends {
+    readonly toolUseKind: string;
+  }
+    ? ClaudeCodeBuiltinTools[K] extends {
+        readonly nativeName: infer N extends string;
+      }
+      ? string extends N
+        ? K
+        : N
+      : K
+    : never]: ClaudeCodeBuiltinTools[K] extends {
+    readonly toolUseKind: infer U;
+  }
+    ? U
+    : never;
+};
+
+// The bridge enforces approvals from CLAUDE_CODE_NATIVE_TOOL_KINDS, so every
+// kind declared here must be present there with the same value.
+CLAUDE_CODE_NATIVE_TOOL_KINDS satisfies DeclaredNativeToolKinds;
 
 /**
  * Live bridge coordinates returned by `doDetach()` and `doSuspendTurn()`. A
