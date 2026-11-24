@@ -1389,6 +1389,7 @@ class DefaultStreamTextResult<
     const resolvedToolCallers = resolveToolCallerConfiguration({
       tools,
       toolCallers: experimental_toolCallers,
+      toolApproval,
     });
     const prepareToolSearch = createToolSearchState({
       tools,
@@ -2360,6 +2361,9 @@ class DefaultStreamTextResult<
               experimental_sandbox: stepSandbox,
             }),
             toolCallers: resolvedToolCallers,
+            toolApproval,
+            toolsContext,
+            runtimeContext,
           });
           const stepToolOrder = prepareStepResult?.toolOrder ?? toolOrder;
 

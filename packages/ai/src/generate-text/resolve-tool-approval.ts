@@ -62,6 +62,69 @@ export async function resolveToolApproval<
    */
   runtimeContext: RUNTIME_CONTEXT;
 }): Promise<Exclude<ToolApprovalStatus, string | undefined>> {
+  const userDefinedToolApprovalStatus = await resolveUserDefinedToolApproval({
+    tools,
+    toolCall,
+    toolApproval,
+    messages,
+    toolsContext,
+    runtimeContext,
+  });
+  if (userDefinedToolApprovalStatus != null) {
+    return userDefinedToolApprovalStatus;
+  }
+
+  const toolName = toolCall.toolName;
+  // `toolName` can be client-controlled, so look tools up by own property only.
+  const tool = getOwn(tools, toolName);
+
+  // assume that the input has been validated and matches the tool's input schema
+  const input = toolCall.input as InferToolInput<TOOLS[keyof TOOLS]>;
+
+  // tool-defined approval
+  if (tool?.needsApproval == null) {
+    return { type: 'not-applicable' };
+  }
+
+  const needsApproval =
+    typeof tool.needsApproval === 'function'
+      ? await tool.needsApproval(input, {
+          toolCallId: toolCall.toolCallId,
+          messages,
+          context: await validateToolContext({
+            toolName,
+            context: getOwn(toolsContext, toolName),
+            contextSchema: tool?.contextSchema,
+          }),
+        })
+      : tool.needsApproval;
+
+  return needsApproval ? { type: 'user-approval' } : { type: 'not-applicable' };
+}
+
+/**
+ * Resolves only the user-supplied approval configuration for a tool call.
+ * Returns `undefined` when the configuration does not cover the tool call,
+ * so that the caller can fall back to tool-defined approval settings.
+ */
+export async function resolveUserDefinedToolApproval<
+  TOOLS extends ToolSet,
+  RUNTIME_CONTEXT extends Context | unknown | never,
+>({
+  tools,
+  toolCall,
+  toolApproval,
+  messages,
+  toolsContext,
+  runtimeContext,
+}: {
+  tools: TOOLS | undefined;
+  toolCall: TypedToolCall<TOOLS>;
+  toolApproval: ToolApprovalConfiguration<TOOLS, RUNTIME_CONTEXT> | undefined;
+  messages: ModelMessage[];
+  toolsContext: InferToolSetContext<TOOLS>;
+  runtimeContext: RUNTIME_CONTEXT;
+}): Promise<Exclude<ToolApprovalStatus, string | undefined> | undefined> {
   // user-defined generic tool approval
   if (toolApproval != null && typeof toolApproval === 'function') {
     return normalizeToolApprovalStatus(
@@ -105,25 +168,7 @@ export async function resolveToolApproval<
     return normalizeToolApprovalStatus(approvalStatus);
   }
 
-  // tool-defined approval
-  if (tool?.needsApproval == null) {
-    return { type: 'not-applicable' };
-  }
-
-  const needsApproval =
-    typeof tool.needsApproval === 'function'
-      ? await tool.needsApproval(input, {
-          toolCallId: toolCall.toolCallId,
-          messages,
-          context: await validateToolContext({
-            toolName,
-            context: getOwn(toolsContext, toolName),
-            contextSchema: tool?.contextSchema,
-          }),
-        })
-      : tool.needsApproval;
-
-  return needsApproval ? { type: 'user-approval' } : { type: 'not-applicable' };
+  return undefined;
 }
 
 function normalizeToolApprovalStatus(

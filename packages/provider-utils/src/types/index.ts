@@ -51,7 +51,9 @@ export type { ToolCall } from './tool-call';
 export {
   getToolCaller as experimental_getToolCaller,
   toolCaller as experimental_toolCaller,
+  type ToolCallerBindOptions as Experimental_ToolCallerBindOptions,
   type ToolCallerDefinition as Experimental_ToolCallerDefinition,
+  type ToolCallerToolApprovalStatus as Experimental_ToolCallerToolApprovalStatus,
   type ToolCallerTool as Experimental_ToolCallerTool,
 } from './tool-caller';
 export type {

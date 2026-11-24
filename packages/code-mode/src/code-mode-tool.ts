@@ -4,7 +4,8 @@ import {
   tool,
   type Experimental_ToolCallerTool,
 } from 'ai';
-import { runCodeMode } from './run-code-mode.js';
+import { runBoundCodeMode } from './run-code-mode.js';
+import type { ResolveCodeModeToolApproval } from './tool-invocation.js';
 import {
   buildCodeModeToolCatalogMessage,
   buildCodeModeToolDescription,
@@ -32,6 +33,7 @@ function createCodeModeToolWithDiscovery(
   tools: CodeModeToolSet,
   options: CodeModeOptions,
   toolDiscovery: 'description' | 'conversation',
+  resolveToolApproval?: ResolveCodeModeToolApproval,
 ): CodeModeTool {
   return tool<CodeModeToolInput, unknown, Record<string, unknown>>({
     description: buildCodeModeToolDescription(tools, toolDiscovery),
@@ -48,11 +50,12 @@ function createCodeModeToolWithDiscovery(
       additionalProperties: false,
     }),
     execute: async (input, executionOptions) =>
-      await runCodeMode({
+      await runBoundCodeMode({
         js: input.js,
         tools,
         toolExecutionOptions: executionOptions,
         options,
+        ...(resolveToolApproval === undefined ? {} : { resolveToolApproval }),
       }),
   }) as CodeModeTool;
 }
@@ -70,11 +73,13 @@ export function codeModeTool(
     createCodeModeToolWithDiscovery({}, codeModeOptions, toolDiscovery),
     {
       type: 'local',
-      bind: tools =>
+      supportsToolApproval: true,
+      bind: (tools, { resolveToolApproval }) =>
         createCodeModeToolWithDiscovery(
           tools as unknown as CodeModeToolSet,
           codeModeOptions,
           toolDiscovery,
+          resolveToolApproval,
         ),
       ...(toolDiscovery === 'conversation'
         ? {

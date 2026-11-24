@@ -30,7 +30,10 @@ import {
   CodeModeTimeoutError,
   CodeModeToolApprovalDeniedError,
 } from './errors.js';
-import { invokeHostTool } from './tool-invocation.js';
+import {
+  invokeHostTool,
+  type ResolveCodeModeToolApproval,
+} from './tool-invocation.js';
 import type {
   CodeModeContinuation,
   CodeModeExecutionPolicy,
@@ -69,6 +72,29 @@ let invocationCounter = 0;
  * @returns The JSON-serializable value returned by the sandboxed program.
  */
 export async function runCodeMode(input: RunCodeModeInput): Promise<unknown> {
+  return await runBoundCodeMode(input);
+}
+
+/**
+ * Input for a code-mode invocation whose host tools were bound by an AI SDK
+ * generation call.
+ *
+ * @internal
+ */
+export interface BoundRunCodeModeInput extends RunCodeModeInput {
+  /**
+   * Resolves the generation call's `toolApproval` policy for each nested
+   * tool call.
+   */
+  resolveToolApproval?: ResolveCodeModeToolApproval;
+}
+
+/**
+ * @internal
+ */
+export async function runBoundCodeMode(
+  input: BoundRunCodeModeInput,
+): Promise<unknown> {
   const policy = resolveExecutionPolicy(input.options?.executionPolicy);
   assertSourceSize(input.js, policy.maxSourceBytes);
 
@@ -219,7 +245,7 @@ function createHostFunctions({
   toolNames,
 }: {
   codeModeErrors: CodeModeError[];
-  input: RunCodeModeInput;
+  input: BoundRunCodeModeInput;
   outerToolCallId: string;
   policy: ResolvedExecutionPolicy;
   toolNames: string[];
@@ -257,7 +283,7 @@ async function invokeCodeModeTool({
   toolName,
 }: {
   codeModeErrors: CodeModeError[];
-  input: RunCodeModeInput;
+  input: BoundRunCodeModeInput;
   outerToolCallId: string;
   policy: ResolvedExecutionPolicy;
   toolInput: unknown;
@@ -322,6 +348,9 @@ async function invokeCodeModeTool({
       toolCallId,
       ...(codeModeInterrupt === undefined ? {} : { codeModeInterrupt }),
       skipApproval,
+      ...(input.resolveToolApproval === undefined
+        ? {}
+        : { resolveToolApproval: input.resolveToolApproval }),
     });
     if (outcome.type === 'interrupted') {
       return context.interrupt(outcome.payload);
