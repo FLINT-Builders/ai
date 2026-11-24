@@ -26,6 +26,8 @@
  * Once #19425 is fixed and MCP tools are properly exposed in exec mode, the
  * three hookpoints in `bridge/index.ts` can be removed along with this file.
  */
+import { userInfo } from 'node:os';
+
 export const CLI_SHIM_FILENAME = 'harness-tool.mjs';
 
 export function buildCliShimScript({
@@ -158,12 +160,44 @@ function parseDirectToolRelayArgv({
 
 function extractShellEvalCommand(argv: string[]): string | undefined {
   if (argv.length !== 3) return undefined;
-  const shellName = argv[0].split('/').at(-1);
-  if (shellName !== 'bash' && shellName !== 'sh' && shellName !== 'zsh') {
-    return undefined;
-  }
+  if (!isTrustedShell(argv[0])) return undefined;
   if (argv[1] !== '-c' && argv[1] !== '-lc') return undefined;
   return argv[2];
+}
+
+const SHELL_NAMES = new Set(['bash', 'sh', 'zsh']);
+
+/*
+ * The shell executable is chosen by whoever issues the command, so a path like
+ * `./bash` or `<repo>/scripts/bash` would run an arbitrary program while still
+ * looking like a shell wrapper. Only accept bare names (resolved via PATH, like
+ * `node` itself), the user's login shell (which Codex uses for its wrapper), or
+ * shells that live in a system or PATH directory.
+ */
+function isTrustedShell(shell: string): boolean {
+  if (SHELL_NAMES.has(shell)) return true;
+  if (!shell.startsWith('/')) return false;
+  const separator = shell.lastIndexOf('/');
+  if (!SHELL_NAMES.has(shell.slice(separator + 1))) return false;
+  if (shell === getLoginShell()) return true;
+  return getTrustedShellDirs().has(shell.slice(0, separator));
+}
+
+function getLoginShell(): string | undefined {
+  try {
+    return userInfo().shell ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function getTrustedShellDirs(): Set<string> {
+  const dirs = new Set(['/bin', '/usr/bin']);
+  for (const entry of (process.env.PATH ?? '').split(':')) {
+    const dir = entry.replace(/\/+$/, '');
+    if (dir.startsWith('/')) dirs.add(dir);
+  }
+  return dirs;
 }
 
 function splitShellAndCommands(command: string): string[] | undefined {
@@ -209,6 +243,14 @@ function splitShellAndCommands(command: string): string[] | undefined {
   return commands;
 }
 
+/*
+ * Splits a command into argv the way bash/sh/zsh would, but only for a subset
+ * of shell syntax that undergoes no expansion or command execution. Anything
+ * the shell would interpret beyond quote removal (substitutions, parameter,
+ * arithmetic, tilde, brace or glob expansion, command separators including
+ * newlines, comments, line continuations) makes the whole command unparseable
+ * so it is never treated as a relay call.
+ */
 function parseShellWords(command: string): string[] | undefined {
   const words: string[] = [];
   let current = '';
@@ -234,17 +276,24 @@ function parseShellWords(command: string): string[] | undefined {
       continue;
     }
     if (quote === '"') {
+      // Inside double quotes the shell still expands `$` and backticks, and a
+      // backslash only escapes a few characters.
       if (char === '"') {
         quote = undefined;
-      } else if (char === '\\' && i + 1 < command.length) {
-        current += command[++i];
+      } else if (char === '$' || char === '`') {
+        return undefined;
+      } else if (char === '\\') {
+        const next = command[i + 1];
+        if (next !== '"' && next !== '\\') return undefined;
+        current += next;
+        i++;
       } else {
         current += char;
       }
       hasCurrent = true;
       continue;
     }
-    if (/\s/.test(char)) {
+    if (char === ' ' || char === '\t') {
       pushCurrent();
       continue;
     }
@@ -253,16 +302,24 @@ function parseShellWords(command: string): string[] | undefined {
       hasCurrent = true;
       continue;
     }
-    if (char === '\\' && i + 1 < command.length) {
-      current += command[++i];
+    if (char === '\\') {
+      const next = command[i + 1];
+      if (next === undefined || !isPrintableAscii(next)) return undefined;
+      current += next;
+      i++;
       hasCurrent = true;
       continue;
     }
-    if (/[;&|<>()`$]/.test(char)) return undefined;
+    if (!/[\w+\-./:@\]]/.test(char)) return undefined;
     current += char;
     hasCurrent = true;
   }
   if (quote) return undefined;
   pushCurrent();
   return words;
+}
+
+function isPrintableAscii(char: string): boolean {
+  const code = char.charCodeAt(0);
+  return code >= 0x20 && code <= 0x7e;
 }
