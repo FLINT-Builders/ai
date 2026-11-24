@@ -351,24 +351,12 @@ function getScalarToolResultPromptCacheBreakpoint({
         ));
 }
 
-/**
- * This is soft-deprecated. Use provider references instead. Kept for backward compatibility
- * with the `fileIdPrefixes` option.
- *
- * TODO: remove in v8
- */
-function isFileId(data: string, prefixes?: readonly string[]): boolean {
-  if (!prefixes) return false;
-  return prefixes.some(prefix => data.startsWith(prefix));
-}
-
 export async function convertToOpenAIResponsesInput({
   prompt,
   toolNameMapping,
   systemMessageMode,
   providerOptionsName,
   explicitMessageItemType = false,
-  fileIdPrefixes,
   passThroughUnsupportedFiles = false,
   store,
   hasConversation = false,
@@ -386,8 +374,6 @@ export async function convertToOpenAIResponsesInput({
   systemMessageMode: 'system' | 'developer' | 'remove';
   providerOptionsName: string;
   explicitMessageItemType?: boolean;
-  /** @deprecated Use provider references instead. */
-  fileIdPrefixes?: readonly string[];
   passThroughUnsupportedFiles?: boolean;
   store: boolean;
   hasConversation?: boolean; // when true, skip assistant messages that already have item IDs
@@ -544,14 +530,10 @@ export async function convertToOpenAIResponsesInput({
                     if (topLevel === 'image') {
                       return {
                         type: 'input_image',
-                        ...(part.data.type === 'url'
-                          ? { image_url: part.data.url.toString() }
-                          : typeof part.data.data === 'string' &&
-                              isFileId(part.data.data, fileIdPrefixes)
-                            ? { file_id: part.data.data }
-                            : {
-                                image_url: `data:${resolveFullMediaType({ part })};base64,${convertToBase64(part.data.data)}`,
-                              }),
+                        image_url:
+                          part.data.type === 'url'
+                            ? part.data.url.toString()
+                            : `data:${resolveFullMediaType({ part })};base64,${convertToBase64(part.data.data)}`,
                         detail:
                           part.providerOptions?.[providerOptionsName]
                             ?.imageDetail,
@@ -582,17 +564,12 @@ export async function convertToOpenAIResponsesInput({
 
                       return {
                         type: 'input_file',
-                        ...(typeof part.data.data === 'string' &&
-                        isFileId(part.data.data, fileIdPrefixes)
-                          ? { file_id: part.data.data }
-                          : {
-                              filename:
-                                part.filename ??
-                                (fullMediaType === 'application/pdf'
-                                  ? `part-${index}.pdf`
-                                  : `part-${index}`),
-                              file_data: `data:${fullMediaType};base64,${convertToBase64(part.data.data)}`,
-                            }),
+                        filename:
+                          part.filename ??
+                          (fullMediaType === 'application/pdf'
+                            ? `part-${index}.pdf`
+                            : `part-${index}`),
+                        file_data: `data:${fullMediaType};base64,${convertToBase64(part.data.data)}`,
                         ...(promptCacheBreakpoint != null && {
                           prompt_cache_breakpoint: promptCacheBreakpoint,
                         }),

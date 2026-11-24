@@ -320,8 +320,6 @@ export function createAzure(
       headers: getHeaders,
       fetch,
       explicitMessageItemType: isFoundryProject,
-      // Soft-deprecated. TODO: remove in v8
-      fileIdPrefixes: ['assistant-'],
     });
 
   const createImageModel = (modelId: string) =>
