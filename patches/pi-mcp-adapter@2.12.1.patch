@@ -1,0 +1,12 @@
+diff --git a/mcp-auth-flow.ts b/mcp-auth-flow.ts
+index e3648592d93c19f94cc15db09a15c2d1fc7f19b3..b7da4ac8eb73483aa0fdb76dba7c468754d9e8ca 100644
+--- a/mcp-auth-flow.ts
++++ b/mcp-auth-flow.ts
+@@ -206,6 +206,7 @@ async function probeAuthDiscovery(serverUrl: string, definition?: ServerEntry, s
+     const response = await fetch(new URL(serverUrl), {
+       method: "POST",
+       headers,
++      redirect: "error",
+       body: JSON.stringify({
+         jsonrpc: "2.0",
+         id: 0,

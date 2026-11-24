@@ -40,3 +40,6 @@ allowBuilds:
   node-liblzma: false
   protobufjs: false
   sharp: false
+
+patchedDependencies:
+  pi-mcp-adapter@2.12.1: patches/pi-mcp-adapter@2.12.1.patch
