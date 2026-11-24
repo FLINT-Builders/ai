@@ -298,7 +298,9 @@ const wrappedModel = wrapLanguageModel({
 
 - The rule at `path` returns a `string[]` of allowed tool names, or `{ tools: string[] }`.
 - Tools not in the allowlist are dropped before the model sees them.
-- Fails closed: on a malformed response or evaluator error, `params.tools` is set to `undefined` so the model is told it has no tools. For fail-open, write the fallback in Rego.
+- Tool calls in the model response whose name is not in the allowlist computed for that call are dropped, so they are never executed. A model can name a tool it was not offered, so removing a tool from the request alone is not enough.
+- Fails closed: on a malformed response or evaluator error, `params.tools` is set to `undefined` so the model is told it has no tools, and every tool call it returns is dropped. For fail-open, write the fallback in Rego.
+- The middleware only sees model calls. Tool calls that the SDK runs without a model call, such as approved calls replayed from client-supplied message history, are governed by `toolApproval`. Pair the middleware with `opaPolicy` as the `toolApproval` gate, and set `experimental_toolApprovalSecret` when message history comes from the client.
 
 ## Scoping a discovered tool surface
 
@@ -402,7 +404,7 @@ OPA backend and adapters:
 - `httpPolicyClient({ url, headers? })`: sync; client against a running OPA server.
 - `opaPolicy({ client, path, toInput? })`: returns a `toolApproval` configuration. Fails closed.
 - `optionalOpaPolicy({ client, path, toInput? })`: like `opaPolicy` but returns `undefined` when `client` is `undefined`.
-- `opaCapabilityMiddleware({ client, path, toInput? })`: a `LanguageModelV4Middleware` that narrows `params.tools` to an allowlist. Fails closed.
+- `opaCapabilityMiddleware({ client, path, toInput? })`: a `LanguageModelV4Middleware` that narrows `params.tools` to an allowlist and drops tool calls outside it from the model response. Fails closed.
 - `normalizeOpaDecision(result)`: standalone result normalization, for users who call OPA themselves.
 
 ## Related
