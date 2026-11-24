@@ -155,6 +155,9 @@ export function createHostToolCorrelation({
       const candidate = orderedCandidates.find(
         item =>
           candidates.has(item.toolCallId) &&
+          isHostToolKind({
+            kind: observedToolCalls.get(item.toolCallId)?.kind,
+          }) &&
           hasPortableEvidence({ candidate: item, invocation }),
       );
       if (candidate != null) suppressCandidate({ candidate, invocation });
