@@ -7,8 +7,6 @@ interface LangsmithConfigPanelProps {
   deploymentUrl: string;
   customUrl: string;
   setCustomUrl: (url: string) => void;
-  apiKey: string;
-  setApiKey: (key: string) => void;
   localDevUrl: string;
 }
 
@@ -16,8 +14,6 @@ export function LangsmithConfigPanel({
   deploymentUrl,
   customUrl,
   setCustomUrl,
-  apiKey,
-  setApiKey,
   localDevUrl,
 }: LangsmithConfigPanelProps) {
   const [showConfig, setShowConfig] = useState(false);
@@ -60,18 +56,11 @@ export function LangsmithConfigPanel({
               className="w-full px-3 py-2 text-sm bg-[var(--background-secondary)] border border-[var(--border)] rounded-lg text-[var(--foreground)] placeholder-[var(--foreground-muted)] focus:outline-none focus:border-[var(--accent)]"
             />
           </div>
-          <div>
-            <label className="block text-xs font-medium text-[var(--foreground-secondary)] mb-1.5">
-              API Key
-            </label>
-            <input
-              type="password"
-              value={apiKey}
-              onChange={e => setApiKey(e.target.value)}
-              placeholder="Required for LangSmith deployments"
-              className="w-full px-3 py-2 text-sm bg-[var(--background-secondary)] border border-[var(--border)] rounded-lg text-[var(--foreground)] placeholder-[var(--foreground-muted)] focus:outline-none focus:border-[var(--accent)]"
-            />
-          </div>
+          <p className="text-xs text-[var(--foreground-secondary)]">
+            The browser connects without an API key. The LangSmith API key is a
+            server secret, so call deployments that require it from a server
+            route instead.
+          </p>
           <p className="text-xs text-[var(--foreground-secondary)]">
             💡 The local server starts automatically with{' '}
             <code className="text-[var(--accent)]">pnpm dev</code>

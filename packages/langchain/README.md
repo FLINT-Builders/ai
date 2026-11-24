@@ -164,7 +164,9 @@ const stream = await graph.stream(
 
 ### LangSmith Deployment Transport
 
-Use `LangSmithDeploymentTransport` with the AI SDK `useChat` hook to connect directly to a LangGraph deployment from the browser:
+Use `LangSmithDeploymentTransport` with the AI SDK `useChat` hook to connect directly from the browser to a LangGraph server that does not need a LangSmith API key, such as the local LangGraph development server:
+
+> **Warning:** The LangSmith API key is a server secret. Never pass it to the transport in client code or expose it through a `NEXT_PUBLIC_` environment variable, because anyone who loads the page can read it and call your deployment directly. In the browser, the transport throws an error when it receives an API key (as `apiKey`, as an `x-api-key` header, or stored on a supplied `client`) and does not read API keys from environment variables. To call a LangSmith deployment that requires an API key, use `RemoteGraph` with `toUIMessageStream` in a server route, which reads `LANGSMITH_API_KEY` from the server environment.
 
 ```tsx
 import { useChat } from 'ai/react';
@@ -175,8 +177,7 @@ function Chat() {
   const transport = useMemo(
     () =>
       new LangSmithDeploymentTransport({
-        url: 'https://your-deployment.us.langgraph.app',
-        apiKey: process.env.LANGSMITH_API_KEY,
+        url: 'http://localhost:2024',
       }),
     [],
   );
@@ -295,7 +296,7 @@ A `ChatTransport` implementation for LangSmith/LangGraph deployments.
 
 - `options`: `LangSmithDeploymentTransportOptions` - Configuration for the RemoteGraph connection
   - `url`: `string` - LangSmith deployment URL or local server URL
-  - `apiKey?`: `string` - API key for authentication (optional for local development)
+  - `apiKey?`: `string` - API key for authentication (server-side only; refused in the browser)
   - `graphId?`: `string` - The ID of the graph to connect to (defaults to `'agent'`)
 
 **Implements:** `ChatTransport`
