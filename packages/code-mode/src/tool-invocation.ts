@@ -1,4 +1,8 @@
-import { asSchema } from 'ai';
+import {
+  asSchema,
+  type Experimental_ToolCallerBindOptions,
+  type Experimental_ToolCallerToolApprovalStatus,
+} from 'ai';
 import { CODE_MODE_TOOL_APPROVAL_KIND } from './approval.js';
 import {
   CodeModeProtocolError,
@@ -18,6 +22,16 @@ import {
   fromJsonPayload,
   toJsonPayload,
 } from './utils/serialization.js';
+
+export type ResolveCodeModeToolApproval =
+  Experimental_ToolCallerBindOptions['resolveToolApproval'];
+
+const TOOL_APPROVAL_STATUS_TYPES: ReadonlySet<string> = new Set([
+  'not-applicable',
+  'approved',
+  'denied',
+  'user-approval',
+]);
 
 export type HostToolInvocationResult =
   | { type: 'success'; valueJson: string }
@@ -40,6 +54,7 @@ export async function invokeHostTool({
   toolCallId,
   codeModeInterrupt,
   skipApproval = false,
+  resolveToolApproval,
 }: {
   toolName: string;
   inputJson: string;
@@ -51,6 +66,7 @@ export async function invokeHostTool({
   toolCallId: string;
   codeModeInterrupt?: CodeModeInterruptExecutionContext;
   skipApproval?: boolean;
+  resolveToolApproval?: ResolveCodeModeToolApproval;
 }): Promise<HostToolInvocationResult> {
   throwIfAborted(baseExecutionOptions.abortSignal);
 
@@ -87,12 +103,38 @@ export async function invokeHostTool({
     ...(codeModeInterrupt !== undefined ? { codeModeInterrupt } : {}),
   };
 
+  const policyApproval =
+    resolveToolApproval === undefined
+      ? undefined
+      : await raceAgainstAbort(
+          resolveToolApproval({
+            toolName,
+            toolCallId,
+            input: validation.value,
+            messages: executionOptions.messages,
+          }),
+          executionOptions.abortSignal,
+        );
+  assertToolApprovalStatus(policyApproval, toolName, toolCallId);
+
+  if (policyApproval?.type === 'denied') {
+    throw new CodeModeToolApprovalDeniedError(
+      toolName,
+      validation.value,
+      toolCallId,
+      policyApproval.reason,
+    );
+  }
+
+  // A policy decision takes precedence over the tool's own needsApproval.
   const needsApproval =
     !skipApproval &&
-    (await raceAgainstAbort(
-      requiresApproval(hostTool, validation.value, executionOptions),
-      executionOptions.abortSignal,
-    ));
+    (policyApproval?.type === 'user-approval' ||
+      (policyApproval?.type !== 'approved' &&
+        (await raceAgainstAbort(
+          requiresApproval(hostTool, validation.value, executionOptions),
+          executionOptions.abortSignal,
+        ))));
 
   if (needsApproval) {
     if (codeModeOptions.approval?.mode === 'interrupt') {
@@ -164,6 +206,26 @@ export async function invokeHostTool({
       `Tool "${toolName}" output`,
     ),
   };
+}
+
+function assertToolApprovalStatus(
+  status: Experimental_ToolCallerToolApprovalStatus | undefined,
+  toolName: string,
+  toolCallId: string,
+): void {
+  if (status === undefined) {
+    return;
+  }
+  if (
+    typeof status !== 'object' ||
+    status === null ||
+    !TOOL_APPROVAL_STATUS_TYPES.has(status.type)
+  ) {
+    throw new CodeModeProtocolError(
+      `Tool "${toolName}" toolApproval policy returned a malformed approval status.`,
+      { toolName, toolCallId },
+    );
+  }
 }
 
 async function requiresApproval(

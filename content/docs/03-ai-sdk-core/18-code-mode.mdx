@@ -241,6 +241,21 @@ Do not expose tools that rely on user approval to code mode. Keep those tools
 directly callable by the model instead. If a nested tool requires approval,
 the call is rejected rather than executed.
 
+The `toolApproval` setting of `generateText`, `streamText`, and `ToolLoopAgent`
+applies to every nested tool call that generated code makes through code mode.
+The policy is evaluated with the validated input of each nested call, and the
+step's `runtimeContext` and `toolsContext`:
+
+- `'denied'` rejects the nested call without running the tool.
+- `'user-approval'` is handled like a tool-level `needsApproval` of `true`:
+  the call is rejected, unless you configure the code mode `approval` option.
+- `'approved'` runs the tool without checking its `needsApproval` setting.
+- `'not-applicable'` falls back to the tool's `needsApproval` setting.
+
+`experimental_runCodeMode` and the code mode continuation helpers take their
+tools directly and do not receive a `toolApproval` setting. Only pass them tools
+that the caller is allowed to run.
+
 ## Execution Limits
 
 Every invocation has limits for runtime, memory, source size, results, tool

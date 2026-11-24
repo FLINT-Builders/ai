@@ -576,6 +576,7 @@ export async function generateText<
   const resolvedToolCallers = resolveToolCallerConfiguration({
     tools,
     toolCallers: experimental_toolCallers,
+    toolApproval,
   });
   const prepareToolSearch = createToolSearchState({
     tools,
@@ -931,6 +932,9 @@ export async function generateText<
                   experimental_sandbox: stepSandbox,
                 }),
                 toolCallers: resolvedToolCallers,
+                toolApproval,
+                toolsContext,
+                runtimeContext,
               });
               const stepToolOrder = prepareStepResult?.toolOrder ?? toolOrder;
 
