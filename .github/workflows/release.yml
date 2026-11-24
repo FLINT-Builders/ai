@@ -81,7 +81,7 @@ jobs:
         if: inputs.snapshot != true && steps.changesets.outputs.published == 'true'
         run: |
           cd .github/scripts/notify-released
-          npm install --no-save
+          npm ci --ignore-scripts
           node index.mjs
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -92,7 +92,7 @@ jobs:
         if: inputs.snapshot != true && steps.changesets.outputs.published == 'true'
         run: |
           cd .github/scripts/upload-provenance
-          npm install --no-save
+          npm ci --ignore-scripts
           node index.mjs
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -131,7 +131,7 @@ jobs:
         if: inputs.snapshot == true
         run: |
           cd .github/scripts/notify-released
-          npm install --no-save
+          npm ci --ignore-scripts
           node notify-snapshot.mjs
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
