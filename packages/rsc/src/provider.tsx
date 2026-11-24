@@ -7,8 +7,11 @@ import {
   getAIStateDeltaPromise,
   sealMutableAIState,
 } from './ai-state';
+import { createSignedAIState, verifySignedAIState } from './ai-state-signature';
 import type {
+  ServerWrappedAction,
   ServerWrappedActions,
+  SignedAIStateDelta,
   AIAction,
   AIActions,
   AIProvider,
@@ -17,15 +20,18 @@ import type {
   OnGetUIState,
 } from './types';
 
-async function innerAction<T>(
+async function innerAction(
   {
     action,
     options,
   }: { action: AIAction; options: InternalAIStateStorageOptions },
-  state: T,
+  signedState: unknown,
   ...args: unknown[]
 ) {
   'use server';
+  // The AI state is held by the client between requests. Only state that was
+  // signed by this server is accepted, and only the verified value is used.
+  const state = await verifySignedAIState(signedState);
   return await withAIState(
     {
       state,
@@ -34,16 +40,21 @@ async function innerAction<T>(
     async () => {
       const result = await action(...args);
       sealMutableAIState();
-      return [getAIStateDeltaPromise() as Promise<T>, result];
+      return [
+        getAIStateDeltaPromise() as
+          | Promise<SignedAIStateDelta | undefined>
+          | undefined,
+        result,
+      ];
     },
   );
 }
 
-function wrapAction<T = unknown>(
-  action: AIAction,
-  options: InternalAIStateStorageOptions,
-) {
-  return innerAction.bind(null, { action, options }) as AIAction<T>;
+function wrapAction(action: AIAction, options: InternalAIStateStorageOptions) {
+  return innerAction.bind(null, {
+    action,
+    options,
+  }) as ServerWrappedAction;
 }
 
 export function createAI<
@@ -124,11 +135,14 @@ export function createAI<
     let aiState = props.initialAIState ?? initialAIState;
     let aiStateDelta = undefined;
 
+    const signedAIState = await createSignedAIState(aiState);
+
     if (wrappedSyncUIState) {
-      const [newAIStateDelta, newUIState] = await wrappedSyncUIState(aiState);
+      const [newAIStateDelta, newUIState] =
+        await wrappedSyncUIState(signedAIState);
       if (newUIState !== undefined) {
         aiStateDelta = newAIStateDelta;
-        uiState = newUIState;
+        uiState = newUIState as UIState;
       }
     }
 
@@ -138,6 +152,7 @@ export function createAI<
         wrappedSyncUIState={wrappedSyncUIState}
         initialUIState={uiState}
         initialAIState={aiState}
+        initialAIStateSignature={signedAIState.signature}
         initialAIStatePatch={aiStateDelta}
       >
         {props.children}

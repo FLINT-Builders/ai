@@ -9,22 +9,38 @@ interface JSONArray extends Array<JSONValue> {}
 export type AIAction<T = any, R = any> = (...args: T[]) => Promise<R>;
 export type AIActions<T = any, R = any> = Record<string, AIAction<T, R>>;
 
-export type ServerWrappedAction<T = unknown> = (
-  aiState: T,
+/**
+ * An AI state together with the server's signature over it.
+ */
+export type SignedAIState<T = unknown> = {
+  state: T;
+  signature: string;
+};
+
+/**
+ * A delta between the AI state sent to an action and the AI state after the
+ * action, together with the server's signature over the resulting AI state.
+ */
+export type SignedAIStateDelta = {
+  delta: unknown;
+  signature: string;
+};
+
+export type ServerWrappedAction = (
+  // Sent by the client and therefore untrusted until it has been verified.
+  signedAIState: unknown,
   ...args: unknown[]
-) => Promise<[Promise<T>, unknown]>;
-export type ServerWrappedActions<T = unknown> = Record<
-  string,
-  ServerWrappedAction<T>
->;
+) => Promise<[Promise<SignedAIStateDelta | undefined> | undefined, unknown]>;
+export type ServerWrappedActions = Record<string, ServerWrappedAction>;
 
 export type InternalAIProviderProps<AIState = any, UIState = any> = {
   children: React.ReactNode;
   initialUIState: UIState;
   initialAIState: AIState;
-  initialAIStatePatch: undefined | Promise<AIState>;
-  wrappedActions: ServerWrappedActions<AIState>;
-  wrappedSyncUIState?: ServerWrappedAction<AIState>;
+  initialAIStateSignature: string;
+  initialAIStatePatch: undefined | Promise<SignedAIStateDelta | undefined>;
+  wrappedActions: ServerWrappedActions;
+  wrappedSyncUIState?: ServerWrappedAction;
 };
 
 export type AIProviderProps<AIState = any, UIState = any, Actions = any> = {
