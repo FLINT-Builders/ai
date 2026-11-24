@@ -20,8 +20,14 @@ export interface StreamCallbacks<TState = unknown> {
    */
   onFinish?: (finalState: TState | undefined) => Promise<void> | void;
 
-  /** Called when the stream encounters an error. */
-  onError?: (error: Error) => Promise<void> | void;
+  /**
+   * Called with the full error when the stream or a tool call fails.
+   *
+   * In `toUIMessageStream`, a returned string is sent to the client as the
+   * error text. Otherwise a generic message is sent, so server-side error
+   * details are not exposed to the client.
+   */
+  onError?: (error: Error) => Promise<string | void> | string | void;
 
   /** Called when the stream is aborted. */
   onAbort?: () => Promise<void> | void;

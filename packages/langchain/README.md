@@ -236,7 +236,7 @@ Converts a LangChain/LangGraph stream to an AI SDK `UIMessageStream`.
   - `onText(text)` - Called for each text chunk
   - `onFinal(text)` - Called with aggregated text (on success, error, or abort)
   - `onFinish(state)` - Called on success with LangGraph state (or `undefined` for other streams)
-  - `onError(error)` - Called when stream errors
+  - `onError(error)` - Called with the full error when the stream or a tool call fails. Return a string to send it to the client as the error text; otherwise `'An error occurred.'` is sent
   - `onAbort()` - Called when stream is aborted
 
 **Returns:** `ReadableStream<UIMessageChunk>`
