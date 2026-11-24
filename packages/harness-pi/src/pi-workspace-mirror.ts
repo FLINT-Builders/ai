@@ -42,11 +42,40 @@ const PI_CONTEXT_FILENAMES = ['AGENTS.md', 'AGENTS.MD'] as const;
  * calls: the report behind this code saw `429 Rate limit exceeded` from a
  * MicroVM proxy long before a sync finished. Files are therefore transferred in
  * batches as a single gzipped tar archive per batch, which is one request for a
- * few hundred files instead of one request per file. Sandboxes without `tar`,
- * `gzip`, or `base64` fall back to per-file reads.
+ * few hundred files instead of one request per file. Sandboxes without `tar`
+ * or `gzip` fall back to one `head -c | base64` read per file.
  */
 export const ARCHIVE_BATCH_SIZE = 300;
 const TAR_BLOCK_SIZE = 512;
+
+/*
+ * Everything in the mirrored scope is sandbox-controlled, and the mirror runs
+ * in the host process before every turn. A large but highly compressible file
+ * (for example a sparse file made with `truncate`) costs the sandbox nothing
+ * to produce and only a few kilobytes of gzip to transfer, so the bytes the
+ * host accepts must be bounded by these budgets rather than by the transfer
+ * size. Pi only loads small text resources from this scope; files over the
+ * per-file budget, and the largest files of a batch or sync that would exceed
+ * the batch or total budget, are left out of the mirror.
+ *
+ * Sizes reported by the sandbox listing are only used to plan batches. Every
+ * read enforces the planned size on the bytes it actually receives, because
+ * the file can change between the listing and the read.
+ */
+export const MAX_MIRRORED_FILE_BYTES = 1024 * 1024;
+export const MAX_ARCHIVE_BATCH_BYTES = 2 * 1024 * 1024;
+export const MAX_MIRRORED_TOTAL_BYTES = 32 * 1024 * 1024;
+
+interface RemoteFile {
+  relativePath: string;
+  sandboxPath: string;
+  /** Size reported by the sandbox listing; `undefined` when unparseable. */
+  listedSize: number | undefined;
+}
+
+interface PlannedFile extends RemoteFile {
+  listedSize: number;
+}
 
 function normalizeRelativePath(inputPath: string): string {
   const normalized = inputPath.split(path.posix.sep).join(path.sep);
@@ -85,7 +114,7 @@ async function listRemoteWorkspaceEntries(
   sandboxWorkDir: string,
 ): Promise<{
   directories: string[];
-  files: Array<{ relativePath: string; sandboxPath: string }>;
+  files: RemoteFile[];
 }> {
   // Enumerate only the `.pi`/`.agents` config subtrees plus the root-level
   // context files — never the rest of the workspace. Use shell glob traversal
@@ -196,9 +225,24 @@ async function listRemoteWorkspaceEntries(
     '      fi',
     '    done',
     '  elif [ -f "$source" ]; then',
-    `    printf 'f\\t%s\\t%s\\n' "$relative" "$source"`,
+    '    pi_config_file_relatives+=("$relative")',
+    '    pi_config_file_sources+=("$source")',
     '  fi',
     '  true',
+    'done',
+    // Report sizes with one `stat` per chunk rather than one process per
+    // file; fall back to per-file `stat`/`wc` (one line each) when a chunk
+    // fails, so every file still gets exactly one size line.
+    'pi_config_file_index=0',
+    'while [ "$pi_config_file_index" -lt "${#pi_config_file_sources[@]}" ]; do',
+    `  pi_config_file_chunk=("\${pi_config_file_sources[@]:$pi_config_file_index:${ARCHIVE_BATCH_SIZE}}")`,
+    '  if ! pi_config_file_sizes=$(stat -c %s -- "${pi_config_file_chunk[@]}" 2>/dev/null); then',
+    '    pi_config_file_sizes=$(for file in "${pi_config_file_chunk[@]}"; do stat -c %s -- "$file" 2>/dev/null || wc -c < "$file" 2>/dev/null || echo -; done)',
+    '  fi',
+    '  while IFS= read -r size; do',
+    `    printf 'f\\t%s\\t%s\\t%s\\n' "\${pi_config_file_relatives[$pi_config_file_index]}" "$size" "\${pi_config_file_sources[$pi_config_file_index]}"`,
+    '    pi_config_file_index=$((pi_config_file_index + 1))',
+    '  done <<< "$pi_config_file_sizes"',
     'done',
     'true',
   ].join('\n');
@@ -209,16 +253,24 @@ async function listRemoteWorkspaceEntries(
   );
 
   const directories: string[] = [];
-  const files: Array<{ relativePath: string; sandboxPath: string }> = [];
+  const files: RemoteFile[] = [];
 
   for (const line of output.split('\n').filter(Boolean)) {
-    const [kind, rawPath, sandboxPath] = line.split('\t', 3);
+    const [kind, rawPath, rawSize, sandboxPath] = line.split('\t', 4);
     if (!rawPath) continue;
 
     const relativePath = normalizeRelativePath(rawPath);
     if (kind === 'd') directories.push(relativePath);
     else if (kind === 'f' && sandboxPath) {
-      files.push({ relativePath, sandboxPath });
+      const size = Number(rawSize?.trim());
+      files.push({
+        relativePath,
+        sandboxPath,
+        listedSize:
+          rawSize?.trim() !== '' && Number.isSafeInteger(size) && size >= 0
+            ? size
+            : undefined,
+      });
     }
   }
 
@@ -283,49 +335,171 @@ function parseTarFiles(archive: Buffer): Map<string, Buffer> {
   return files;
 }
 
+function roundUpToTarBlock(bytes: number): number {
+  return Math.ceil(bytes / TAR_BLOCK_SIZE) * TAR_BLOCK_SIZE;
+}
+
+/**
+ * Upper bound on the tar bytes a member adds beyond its content: the header,
+ * the content padding, and one extended header (GNU long name or pax records)
+ * carrying the member name.
+ */
+function tarMemberOverheadBytes(member: string): number {
+  return (
+    3 * TAR_BLOCK_SIZE +
+    roundUpToTarBlock(Buffer.byteLength(member, 'utf8') + TAR_BLOCK_SIZE)
+  );
+}
+
+/** End-of-archive blocks plus padding up to tar's default 10240-byte record. */
+const TAR_ARCHIVE_TRAILER_BYTES = 22 * TAR_BLOCK_SIZE;
+
+function maxBase64Length(bytes: number): number {
+  return Math.ceil(bytes / 3) * 4;
+}
+
+/**
+ * Decode base64 command output, refusing anything that would decode to more
+ * than `maxBytes`. `base64` wraps lines, so whitespace is allowed for.
+ */
+function decodeBoundedBase64(
+  output: string,
+  maxBytes: number,
+): Buffer | undefined {
+  const maxEncoded = maxBase64Length(maxBytes);
+  if (output.length > maxEncoded + Math.ceil(maxEncoded / 64) + 16) {
+    return undefined;
+  }
+  const encoded = output.replace(/\s+/g, '');
+  if (encoded.length > maxEncoded) return undefined;
+  const decoded = Buffer.from(encoded, 'base64');
+  return decoded.length > maxBytes ? undefined : decoded;
+}
+
 /**
  * Transfer a batch of sandbox files with a single command. Returns the decoded
  * contents keyed by the requested sandbox path, leaving out anything the
- * sandbox could not archive (no `tar`/`gzip`/`base64`, or a file that vanished
- * mid-sync) so the caller can fall back to a per-file read.
+ * sandbox could not archive (no `tar`/`gzip`/`base64`, a file that vanished
+ * mid-sync, or a file that no longer matches its listed size) so the caller
+ * can fall back to a per-file read.
  */
 async function readSandboxFilesAsArchive(
   sandbox: Experimental_SandboxSession,
-  sandboxPaths: string[],
+  files: PlannedFile[],
 ): Promise<Map<string, Buffer>> {
   // Archive relative to `/` so member names are the requested absolute paths
   // without their leading slash, wherever the files live: the traversal
   // resolves symlinks, so these paths can point outside the workspace.
-  const members = sandboxPaths.map(sandboxPath =>
-    sandboxPath.replace(/^\/+/, ''),
-  );
+  const members = files.map(file => file.sandboxPath.replace(/^\/+/, ''));
+  const maxTarBytes =
+    files.reduce((total, file) => total + file.listedSize, 0) +
+    members.reduce(
+      (total, member) => total + tarMemberOverheadBytes(member),
+      0,
+    ) +
+    TAR_ARCHIVE_TRAILER_BYTES;
+  // Deflate never expands its input by more than a fraction of a percent plus
+  // a fixed header, so a well-formed archive within `maxTarBytes` always fits.
+  const maxGzipBytes = maxTarBytes + Math.ceil(maxTarBytes / 100) + 1024;
   const command = `tar -C / -czf - -- ${members
     .map(shellQuote)
-    .join(' ')} 2>/dev/null | base64`;
+    .join(' ')} 2>/dev/null | head -c ${maxGzipBytes + 1} | base64`;
 
-  let encoded: string;
+  let result: { exitCode: number; stdout: string };
   try {
-    encoded = (await readCommandOutput(sandbox, command)).replace(/\s+/g, '');
+    result = await sandbox.run({ command });
   } catch {
     return new Map();
   }
-  if (encoded === '') return new Map();
+  if (result.exitCode != null && result.exitCode !== 0) return new Map();
+
+  const compressed = decodeBoundedBase64(result.stdout, maxGzipBytes);
+  if (compressed == null || compressed.length === 0) return new Map();
 
   let entries: Map<string, Buffer>;
   try {
-    entries = parseTarFiles(gunzipSync(Buffer.from(encoded, 'base64')));
+    entries = parseTarFiles(
+      gunzipSync(compressed, { maxOutputLength: maxTarBytes }),
+    );
   } catch {
     return new Map();
   }
 
   const contents = new Map<string, Buffer>();
   for (const [index, member] of members.entries()) {
+    const file = files[index] as PlannedFile;
     const content = entries.get(member);
-    if (content != null) {
-      contents.set(sandboxPaths[index] as string, content);
+    if (content != null && content.length <= file.listedSize) {
+      contents.set(file.sandboxPath, content);
     }
   }
   return contents;
+}
+
+/**
+ * Read one sandbox file, accepting at most `maxBytes`. Returns `'oversized'`
+ * when the file holds more than that, which the sandbox reveals by sending one
+ * byte past the limit.
+ */
+async function readSandboxFileBounded(
+  sandbox: Experimental_SandboxSession,
+  sandboxPath: string,
+  maxBytes: number,
+): Promise<Buffer | 'missing' | 'oversized'> {
+  const quotedPath = shellQuote(sandboxPath);
+  const result = await sandbox.run({
+    command: `[ -f ${quotedPath} ] || exit 3; head -c ${maxBytes + 1} ${quotedPath} | base64`,
+  });
+  if (result.exitCode === 3) return 'missing';
+  if (result.exitCode != null && result.exitCode !== 0) {
+    throw new Error(
+      `Sandbox workspace mirror could not read ${sandboxPath}: ${(
+        result.stderr || `exit code ${result.exitCode}`
+      ).slice(0, 500)}`,
+    );
+  }
+  return decodeBoundedBase64(result.stdout, maxBytes) ?? 'oversized';
+}
+
+/**
+ * Split the listed files into archive batches of at most `ARCHIVE_BATCH_SIZE`
+ * files and `MAX_ARCHIVE_BATCH_BYTES` listed bytes, within
+ * `MAX_MIRRORED_TOTAL_BYTES` overall. Within a batch the smallest files are
+ * admitted first, so oversized assets are what gets left out rather than the
+ * small resource files Pi actually loads.
+ */
+function planArchiveBatches(files: RemoteFile[]): PlannedFile[][] {
+  const batches: PlannedFile[][] = [];
+  let totalBytes = 0;
+
+  for (let offset = 0; offset < files.length; offset += ARCHIVE_BATCH_SIZE) {
+    const candidates = files
+      .slice(offset, offset + ARCHIVE_BATCH_SIZE)
+      .filter(
+        (file): file is PlannedFile =>
+          file.listedSize != null &&
+          file.listedSize <= MAX_MIRRORED_FILE_BYTES &&
+          file.sandboxPath.startsWith('/'),
+      )
+      .sort((left, right) => left.listedSize - right.listedSize);
+
+    const batch: PlannedFile[] = [];
+    let batchBytes = 0;
+    for (const file of candidates) {
+      if (
+        batchBytes + file.listedSize > MAX_ARCHIVE_BATCH_BYTES ||
+        totalBytes + file.listedSize > MAX_MIRRORED_TOTAL_BYTES
+      ) {
+        break;
+      }
+      batch.push(file);
+      batchBytes += file.listedSize;
+      totalBytes += file.listedSize;
+    }
+    if (batch.length > 0) batches.push(batch);
+  }
+
+  return batches;
 }
 
 async function pathKind(
@@ -419,8 +593,9 @@ export async function syncHostWorkspaceFromSandbox(args: {
     sandboxWorkDir,
   );
   const hostEntries = await collectHostScopedEntries(hostWorkDir);
+  const batches = planArchiveBatches(remoteEntries.files);
   const remoteFiles = new Set(
-    remoteEntries.files.map(file => file.relativePath),
+    batches.flatMap(batch => batch.map(file => file.relativePath)),
   );
   const requiredDirectories = buildRequiredDirectories(
     remoteEntries.directories,
@@ -449,37 +624,35 @@ export async function syncHostWorkspaceFromSandbox(args: {
     await mkdir(path.join(hostWorkDir, relativePath), { recursive: true });
   }
 
-  for (
-    let offset = 0;
-    offset < remoteEntries.files.length;
-    offset += ARCHIVE_BATCH_SIZE
-  ) {
-    const batch = remoteEntries.files.slice(
-      offset,
-      offset + ARCHIVE_BATCH_SIZE,
-    );
-    const archived = await readSandboxFilesAsArchive(
-      sandbox,
-      batch.map(file => file.sandboxPath),
-    );
+  for (const batch of batches) {
+    const archived = await readSandboxFilesAsArchive(sandbox, batch);
 
-    for (const { relativePath, sandboxPath } of batch) {
+    for (const { relativePath, sandboxPath, listedSize } of batch) {
+      const hostPath = path.join(hostWorkDir, relativePath);
       let content = archived.get(sandboxPath);
       if (content == null) {
-        const bytes = await sandbox.readBinaryFile({ path: sandboxPath });
-        if (!bytes) {
+        const read = await readSandboxFileBounded(
+          sandbox,
+          sandboxPath,
+          listedSize,
+        );
+        if (read === 'missing') {
           throw new Error(
             `Sandbox workspace file disappeared during mirror sync: ${sandboxPath}`,
           );
         }
-        content = Buffer.from(bytes);
+        if (read === 'oversized') {
+          await rm(hostPath, { force: true });
+          continue;
+        }
+        content = read;
       }
 
-      const hostPath = path.join(hostWorkDir, relativePath);
       let shouldWrite = true;
       try {
-        const existing = await readFile(hostPath);
-        shouldWrite = !existing.equals(content);
+        shouldWrite =
+          (await stat(hostPath)).size !== content.length ||
+          !(await readFile(hostPath)).equals(content);
       } catch {
         shouldWrite = true;
       }
