@@ -9,6 +9,34 @@ export function stripAnsi(input: string): string {
   return input.replace(ansiPattern, '');
 }
 
+/**
+ * Makes untrusted text safe to write to a terminal by replacing every C0
+ * control (except tab and newline), DEL, and C1 control with a visible
+ * `\uXXXX` escape. Must run before the renderer adds its own ANSI codes,
+ * because the layout helpers pass any ESC [ sequence through as styling.
+ */
+export function sanitizeTerminalText(input: string): string {
+  const normalized = input.replace(/\r\n/g, '\n');
+  let output = '';
+
+  for (let index = 0; index < normalized.length; index++) {
+    const charCode = normalized.charCodeAt(index);
+
+    output += isTerminalControl(charCode)
+      ? `\\u${charCode.toString(16).padStart(4, '0')}`
+      : normalized[index];
+  }
+
+  return output;
+}
+
+function isTerminalControl(charCode: number): boolean {
+  return (
+    (charCode < 0x20 && charCode !== 0x09 && charCode !== 0x0a) ||
+    (charCode >= 0x7f && charCode <= 0x9f)
+  );
+}
+
 export function visibleLength(input: string): number {
   let width = 0;
   let index = 0;

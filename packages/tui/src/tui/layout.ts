@@ -2,6 +2,7 @@ import { renderMarkdown } from './markdown';
 import {
   ansiPrefixPattern,
   codePointWidth,
+  sanitizeTerminalText,
   sliceVisible,
   visibleLength,
 } from './terminal-text';
@@ -78,14 +79,22 @@ export function renderScreenViewport(state: TUIScreenViewportState): string {
   }
 
   const lines = [
-    topBorder(width, state.title, state.rightTitle),
+    topBorder(
+      width,
+      sanitizeTerminalText(state.title),
+      state.rightTitle == null
+        ? undefined
+        : sanitizeTerminalText(state.rightTitle),
+    ),
     ...visibleBody.map(line => boxLine(line, width)),
     bottomBorder(width),
     topBorder(width, state.inputActive ? 'Input' : 'Status'),
     boxLine(
-      state.inputActive
-        ? `> ${state.input}${state.inputCursorVisible === false ? ' ' : '█'}`
-        : (state.status ?? 'Streaming... ↑/↓ scroll · Ctrl+C quit'),
+      sanitizeTerminalText(
+        state.inputActive
+          ? `> ${state.input}${state.inputCursorVisible === false ? ' ' : '█'}`
+          : (state.status ?? 'Streaming... ↑/↓ scroll · Ctrl+C quit'),
+      ),
       width,
     ),
     bottomBorder(width),

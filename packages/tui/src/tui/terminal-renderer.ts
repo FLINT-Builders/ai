@@ -10,6 +10,7 @@ import type {
 import { renderScreenViewport, sliceVisible, visibleLength } from './layout';
 import { renderMarkdown } from './markdown';
 import { TerminalFrameBuffer } from './terminal-frame-buffer';
+import { sanitizeTerminalText } from './terminal-text';
 import {
   getToolName,
   isToolUIPart,
@@ -1169,8 +1170,10 @@ function sectionMatchesCache(
 function createSectionLines(section: ChatSection, width: number) {
   const style = sectionStyles[section.kind];
   const contentWidth = Math.max(1, width - 4);
-  const title = ` ${section.title} `;
-  const rightTitle = section.rightTitle ? ` ${section.rightTitle} ` : '';
+  const title = ` ${sanitizeTerminalText(section.title)} `;
+  const rightTitle = section.rightTitle
+    ? ` ${sanitizeTerminalText(section.rightTitle)} `
+    : '';
 
   if (section.collapsed) {
     const borderWidth = Math.max(
@@ -1188,7 +1191,7 @@ function createSectionLines(section: ChatSection, width: number) {
   const bottom = `${style.color}╰${style.border.repeat(Math.max(0, width - 2))}╯${colors.reset}`;
   const content =
     section.content.length > 0
-      ? renderMarkdown(section.content)
+      ? renderMarkdown(sanitizeTerminalText(section.content))
       : colors.dim + '(streaming...)' + colors.reset;
   const lines = content
     .split('\n')
