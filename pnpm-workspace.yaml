@@ -10,6 +10,9 @@ overrides:
   tinyexec: 1.0.2
   oxlint: 1.56.0
   tar: 7.5.19
+  'brace-expansion@1': 1.1.22
+  'brace-expansion@2': 2.1.8
+  'brace-expansion@5': 5.0.13
   '@workflow/world-local@4>undici': 7.29.0
   '@workflow/world-vercel@4>undici': 7.29.0
 
