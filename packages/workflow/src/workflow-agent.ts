@@ -6,10 +6,13 @@ import type {
   SharedV4ProviderOptions,
 } from '@ai-sdk/provider';
 import {
+  asSchema,
   getErrorMessage,
   isAbortError,
+  safeValidateTypes,
   withUserAgentSuffix,
   type Context,
+  type ValidationResult,
   type HasRequiredKey,
   type InferToolContext,
   type InferToolInput,
@@ -38,6 +41,7 @@ import {
   type Instructions,
   type Experimental_SandboxSession as SandboxSession,
   InvalidToolApprovalSignatureError,
+  InvalidToolInputError,
 } from 'ai';
 import {
   createRestrictedTelemetryDispatcher,
@@ -1864,12 +1868,17 @@ export class WorkflowAgent<
             continue;
           }
 
+          const approvedToolCall = {
+            toolCallId: approval.toolCallId,
+            toolName: approval.toolName,
+            input: approval.input,
+          };
           const result = await executeToolWithCallbacks(
-            {
-              toolCallId: approval.toolCallId,
-              toolName: approval.toolName,
-              input: approval.input,
-            },
+            approvedToolCall,
+            await validateToolCallInput(
+              approvedToolCall,
+              this.tools as ToolSet,
+            ),
             this.tools as ToolSet,
             prompt.messages as unknown as LanguageModelV4Prompt,
             effectiveToolsContext,
@@ -2102,6 +2111,7 @@ export class WorkflowAgent<
     // Helper to wrap executeTool with onToolExecutionStart/onToolExecutionEnd callbacks
     async function executeToolWithCallbacks(
       toolCall: { toolCallId: string; toolName: string; input: unknown },
+      inputValidation: ValidationResult<unknown>,
       tools: ToolSet,
       messages: LanguageModelV4Prompt,
       perToolContexts: Record<string, Context | undefined>,
@@ -2116,6 +2126,12 @@ export class WorkflowAgent<
       };
 
       const tool = tools[toolCall.toolName];
+      if (tool != null && !inputValidation.success) {
+        return createInvalidToolInputExecutionResult(
+          toolCall,
+          inputValidation.error,
+        );
+      }
       const resolvedContext = tool
         ? await resolveToolContext({
             toolName: toolCall.toolName,
@@ -2148,6 +2164,7 @@ export class WorkflowAgent<
         const execute = () =>
           executeTool(
             toolCall,
+            inputValidation,
             tools,
             messages,
             resolvedContext,
@@ -2459,11 +2476,17 @@ export class WorkflowAgent<
           // approval pause the agent loop.
           if (pausedToolCalls.length > 0) {
             // Execute any executable tools that were also called in this step
+            const executableInputValidations = await Promise.all(
+              executableToolCalls.map(toolCall =>
+                validateToolCallInput(toolCall, stepTools),
+              ),
+            );
             const executableResults = await Promise.all(
               executableToolCalls.map(
-                (toolCall): Promise<WorkflowToolExecutionResult> =>
+                (toolCall, index): Promise<WorkflowToolExecutionResult> =>
                   executeToolWithCallbacks(
                     toolCall,
+                    executableInputValidations[index],
                     stepTools,
                     iterMessages,
                     toolsContext,
@@ -2652,12 +2675,20 @@ export class WorkflowAgent<
             };
           }
 
-          // Execute client tools (all have execute functions at this point)
+          // Execute client tools (all have execute functions at this point).
+          // Validate every input before any tool starts so execution order
+          // does not depend on how long each schema takes to validate.
+          const clientInputValidations = await Promise.all(
+            nonProviderToolCalls.map(toolCall =>
+              validateToolCallInput(toolCall, stepTools),
+            ),
+          );
           const clientToolResults = await Promise.all(
             nonProviderToolCalls.map(
-              (toolCall): Promise<WorkflowToolExecutionResult> =>
+              (toolCall, index): Promise<WorkflowToolExecutionResult> =>
                 executeToolWithCallbacks(
                   toolCall,
+                  clientInputValidations[index],
                   stepTools,
                   iterMessages,
                   toolsContext,
@@ -3305,8 +3336,59 @@ function getToolCallbackMessages(
   return withoutAssistantToolCall as unknown as ModelMessage[];
 }
 
+/**
+ * Validates a tool call's input against the tool's original `inputSchema`.
+ *
+ * The model step only validates against the JSON Schema form of the schema,
+ * which drops refinements, transforms, and defaults. Every locally executed
+ * tool call must be validated here, and the tool executed with the parsed
+ * value.
+ */
+async function validateToolCallInput(
+  toolCall: { toolName: string; input: unknown },
+  tools: ToolSet,
+): Promise<ValidationResult<unknown>> {
+  const tool = Object.prototype.hasOwnProperty.call(tools, toolCall.toolName)
+    ? tools[toolCall.toolName]
+    : undefined;
+  if (tool == null) {
+    return {
+      success: false,
+      error: new Error(`Tool "${toolCall.toolName}" not found`),
+    };
+  }
+  return safeValidateTypes({
+    value: toolCall.input,
+    schema: asSchema(tool.inputSchema),
+  });
+}
+
+function createInvalidToolInputExecutionResult(
+  toolCall: { toolCallId: string; toolName: string; input: unknown },
+  cause: Error,
+): WorkflowToolExecutionResult {
+  const errorMessage = getErrorMessage(
+    new InvalidToolInputError({
+      toolName: toolCall.toolName,
+      toolInput: JSON.stringify(toolCall.input),
+      cause,
+    }),
+  );
+  return {
+    modelResult: {
+      type: 'tool-result',
+      toolCallId: toolCall.toolCallId,
+      toolName: toolCall.toolName,
+      output: { type: 'error-text', value: errorMessage },
+    },
+    rawOutput: errorMessage,
+    isError: true,
+  };
+}
+
 async function executeTool(
   toolCall: { toolCallId: string; toolName: string; input: unknown },
+  inputValidation: ValidationResult<unknown>,
   tools: ToolSet,
   messages: LanguageModelV4Prompt,
   context?: unknown,
@@ -3322,8 +3404,13 @@ async function executeTool(
         `Client-side tools should be filtered before calling executeTool.`,
     );
   }
-  // Input is already parsed and validated by streamModelCall's parseToolCall
-  const parsedInput = toolCall.input;
+  if (!inputValidation.success) {
+    return createInvalidToolInputExecutionResult(
+      toolCall,
+      inputValidation.error,
+    );
+  }
+  const parsedInput = inputValidation.value;
   let toolResult: unknown;
 
   try {

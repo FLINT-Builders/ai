@@ -4,7 +4,11 @@ import type {
   LanguageModelV4ToolResultPart,
   SharedV4ProviderOptions,
 } from '@ai-sdk/provider';
-import type { Context } from '@ai-sdk/provider-utils';
+import {
+  asSchema,
+  safeValidateTypes,
+  type Context,
+} from '@ai-sdk/provider-utils';
 import {
   DefaultGeneratedFile,
   experimental_filterActiveTools as filterActiveTools,
@@ -681,12 +685,25 @@ async function invokeToolInputLifecycleCallbacks({
         break;
       case 'available': {
         const toolCall = toolCallsById.get(toolCallId);
-        if (toolCall == null) {
+        if (
+          toolCall == null ||
+          toolCall.invalid ||
+          tool.onInputAvailable == null
+        ) {
           break;
         }
-        await tool.onInputAvailable?.({
+        // The model step only checked the JSON Schema form of the input
+        // schema, so refinements and transforms must be applied here.
+        const validation = await safeValidateTypes({
+          value: toolCall.input,
+          schema: asSchema(tool.inputSchema),
+        });
+        if (!validation.success) {
+          break;
+        }
+        await tool.onInputAvailable({
           ...options,
-          input: toolCall.input,
+          input: validation.value,
         });
         break;
       }

@@ -173,6 +173,58 @@ describe('streamTextIterator', () => {
     ]);
   });
 
+  it('applies the original input schema before onInputAvailable', async () => {
+    const onInputAvailable = vi.fn();
+    vi.mocked(doStreamStep).mockResolvedValue(
+      createMockDoStreamStepResult({
+        finishReason: 'tool-calls',
+        toolCalls: [
+          {
+            type: 'tool-call',
+            toolCallId: 'call-rejected',
+            toolName: 'read',
+            input: { path: '../secret' },
+          },
+          {
+            type: 'tool-call',
+            toolCallId: 'call-accepted',
+            toolName: 'read',
+            input: { path: 'notes.txt' },
+          },
+        ],
+        toolInputLifecycleEvents: [
+          ['start', 'call-rejected', 'read'],
+          ['available', 'call-rejected'],
+          ['start', 'call-accepted', 'read'],
+          ['available', 'call-accepted'],
+        ],
+      }),
+    );
+
+    const iterator = streamTextIterator({
+      prompt: [{ role: 'user', content: [{ type: 'text', text: 'read' }] }],
+      tools: {
+        read: tool({
+          inputSchema: z
+            .object({ path: z.string().refine(path => !path.includes('..')) })
+            .transform(({ path }) => ({ path: `/data/${path}` })),
+          onInputAvailable,
+        }),
+      },
+      model: vi.fn() as any,
+    });
+
+    await iterator.next();
+
+    expect(onInputAvailable).toHaveBeenCalledTimes(1);
+    expect(onInputAvailable).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolCallId: 'call-accepted',
+        input: { path: '/data/notes.txt' },
+      }),
+    );
+  });
+
   it('validates and normalizes tool context before input callbacks', async () => {
     const callback = vi.fn();
     vi.mocked(doStreamStep).mockResolvedValue(

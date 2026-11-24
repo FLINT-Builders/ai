@@ -364,7 +364,7 @@ describe('WorkflowAgent', () => {
                 {
                   toolCallId: 'test-call-id',
                   toolName: 'testTool',
-                  input: '{}',
+                  input: {},
                 } as LanguageModelV4ToolCall,
               ],
               messages: mockMessages,
@@ -439,7 +439,7 @@ describe('WorkflowAgent', () => {
                 {
                   toolCallId: 'test-call-id',
                   toolName: 'testTool',
-                  input: '{}',
+                  input: {},
                 } as LanguageModelV4ToolCall,
               ],
               messages: mockMessages,
@@ -477,7 +477,7 @@ describe('WorkflowAgent', () => {
         type: 'tool-error',
         toolCallId: 'test-call-id',
         toolName: 'testTool',
-        input: '{}',
+        input: {},
         error: `Error: ${errorMessage}`,
       });
       expect(write.mock.calls.map(([chunk]) => chunk)).not.toContainEqual(
@@ -524,7 +524,7 @@ describe('WorkflowAgent', () => {
                 {
                   toolCallId: 'test-call-id',
                   toolName: 'testTool',
-                  input: '{}',
+                  input: {},
                 } as LanguageModelV4ToolCall,
               ],
               messages: mockMessages,
@@ -555,6 +555,81 @@ describe('WorkflowAgent', () => {
           type: 'json',
           value: toolResult,
         },
+      });
+    });
+
+    it('should validate tool input against the original schema before execute', async () => {
+      const execute = vi.fn(async (input: unknown) => input);
+      const onToolExecutionStart = vi.fn();
+      const tools: ToolSet = {
+        readFile: {
+          inputSchema: z
+            .object({
+              path: z.string().refine(path => !path.includes('..')),
+            })
+            .transform(({ path }) => ({ path: `/data/${path}` })),
+          execute,
+        },
+      };
+
+      const agent = new WorkflowAgent({
+        model: createMockModel(),
+        tools,
+        onToolExecutionStart,
+      });
+
+      const { streamTextIterator } = await import('./stream-text-iterator.js');
+      const mockMessages: LanguageModelV4Prompt = [
+        { role: 'user', content: [{ type: 'text', text: 'test' }] },
+      ];
+      const mockIterator = {
+        next: vi
+          .fn()
+          .mockResolvedValueOnce({
+            done: false,
+            value: {
+              toolCalls: [
+                {
+                  toolCallId: 'rejected-call-id',
+                  toolName: 'readFile',
+                  input: { path: '../secret' },
+                },
+                {
+                  toolCallId: 'accepted-call-id',
+                  toolName: 'readFile',
+                  input: { path: 'notes.txt' },
+                },
+              ],
+              messages: mockMessages,
+            },
+          })
+          .mockResolvedValueOnce({ done: true, value: [] }),
+      };
+      vi.mocked(streamTextIterator).mockReturnValue(
+        mockIterator as unknown as MockIterator,
+      );
+
+      await agent.stream({
+        messages: [{ role: 'user', content: 'test' }],
+        writable: new WritableStream({ write: vi.fn() }),
+      });
+
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(execute.mock.calls[0][0]).toEqual({ path: '/data/notes.txt' });
+      expect(onToolExecutionStart).toHaveBeenCalledTimes(1);
+
+      const toolResults = mockIterator.next.mock.calls[1][0];
+      expect(toolResults).toHaveLength(2);
+      expect(toolResults[0]).toMatchObject({
+        toolCallId: 'rejected-call-id',
+        output: {
+          type: 'error-text',
+          value: expect.stringContaining('Invalid input for tool readFile'),
+        },
+      });
+      expect(toolResults[1]).toMatchObject({
+        toolCallId: 'accepted-call-id',
+        output: { type: 'json', value: { path: '/data/notes.txt' } },
       });
     });
 
@@ -940,7 +1015,7 @@ describe('WorkflowAgent', () => {
                 {
                   toolCallId: 'local-call-id',
                   toolName: 'localTool',
-                  input: '{}',
+                  input: {},
                   providerExecuted: false,
                 } as LanguageModelV4ToolCall,
                 // Provider-executed tool call - should use stream result
@@ -1300,7 +1375,7 @@ describe('WorkflowAgent', () => {
                 {
                   toolCallId: 'test-call-id',
                   toolName: 'testTool',
-                  input: '{}',
+                  input: {},
                 } as LanguageModelV4ToolCall,
               ],
               messages: mockMessages,
@@ -1797,7 +1872,7 @@ describe('WorkflowAgent', () => {
                 {
                   toolCallId: 'server-call-id',
                   toolName: 'serverTool',
-                  input: '{}',
+                  input: {},
                   providerExecuted: false,
                 } as LanguageModelV4ToolCall,
               ],
@@ -2106,8 +2181,8 @@ describe('WorkflowAgent', () => {
                 {
                   toolCallId: 'test-call-id',
                   toolName: 'testTool',
-                  input: '{"query":"weather"}',
-                } as LanguageModelV4ToolCall,
+                  input: { query: 'weather' },
+                } as ParsedToolCall,
               ],
               messages: conversationMessages,
             },
@@ -2200,13 +2275,13 @@ describe('WorkflowAgent', () => {
                 {
                   toolCallId: 'weather-call',
                   toolName: 'weatherTool',
-                  input: '{"city":"NYC"}',
-                } as LanguageModelV4ToolCall,
+                  input: { city: 'NYC' },
+                } as ParsedToolCall,
                 {
                   toolCallId: 'news-call',
                   toolName: 'newsTool',
-                  input: '{"topic":"tech"}',
-                } as LanguageModelV4ToolCall,
+                  input: { topic: 'tech' },
+                } as ParsedToolCall,
               ],
               messages: conversationMessages,
             },
@@ -2309,8 +2384,8 @@ describe('WorkflowAgent', () => {
                 {
                   toolCallId: 'search-1',
                   toolName: 'searchTool',
-                  input: '{"query":"cats"}',
-                } as LanguageModelV4ToolCall,
+                  input: { query: 'cats' },
+                } as ParsedToolCall,
               ],
               messages: firstRoundMessages,
             },
@@ -2323,8 +2398,8 @@ describe('WorkflowAgent', () => {
                 {
                   toolCallId: 'search-2',
                   toolName: 'searchTool',
-                  input: '{"query":"dogs"}',
-                } as LanguageModelV4ToolCall,
+                  input: { query: 'dogs' },
+                } as ParsedToolCall,
               ],
               messages: secondRoundMessages,
             },
@@ -2825,7 +2900,7 @@ describe('WorkflowAgent', () => {
                 {
                   toolCallId: 'test-call-id',
                   toolName: 'failingTool',
-                  input: '{}',
+                  input: {},
                 } as LanguageModelV4ToolCall,
               ],
               messages: mockMessages,
@@ -3078,7 +3153,7 @@ describe('WorkflowAgent', () => {
                 {
                   toolCallId: 'call-1',
                   toolName: 'testTool',
-                  input: '{}',
+                  input: {},
                 } as LanguageModelV4ToolCall,
               ],
               messages: mockMessages,
@@ -3162,7 +3237,7 @@ describe('WorkflowAgent', () => {
                 {
                   toolCallId: 'call-1',
                   toolName: 'failTool',
-                  input: '{}',
+                  input: {},
                 } as LanguageModelV4ToolCall,
               ],
               messages: mockMessages,
@@ -3250,7 +3325,7 @@ describe('WorkflowAgent', () => {
                 {
                   toolCallId: 'call-1',
                   toolName,
-                  input: '{}',
+                  input: {},
                 } as LanguageModelV4ToolCall,
               ],
               messages: mockMessages,
