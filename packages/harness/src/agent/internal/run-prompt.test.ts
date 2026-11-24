@@ -2363,3 +2363,340 @@ describe('runPrompt abort semantics', () => {
     expect(onEndCalls).toEqual([{ isAborted: true }]);
   });
 });
+
+const transferSchema = z.object({
+  action: z.enum(['read']),
+  recipient: z
+    .string()
+    .trim()
+    .regex(/^[a-z0-9_]{1,8}$/),
+  amount: z.number().int().min(1).max(100),
+  note: z.string().max(12).default('none'),
+});
+
+const schemaValidTransfer = {
+  action: 'read',
+  recipient: '  ab_1  ',
+  amount: 5,
+  extra: 'should-not-reach-execute',
+};
+
+const schemaValidatedTransfer = {
+  action: 'read',
+  recipient: 'ab_1',
+  amount: 5,
+  note: 'none',
+};
+
+type HostToolSchemaCase = {
+  name: string;
+  schema: z.ZodType;
+  inputText: string;
+  /**
+   * A different, schema-valid payload replayed on the same tool call id.
+   * Approval continuation must not execute this in place of the stored input.
+   */
+  replay: Record<string, unknown>;
+};
+
+const hostToolSchemaCases: HostToolSchemaCase[] = [
+  {
+    name: 'an action outside the enum',
+    schema: z.object({ action: z.enum(['read', 'list']) }),
+    inputText: JSON.stringify({ action: 'delete' }),
+    replay: { action: 'read' },
+  },
+  {
+    name: 'an identifier outside the pattern',
+    schema: z.object({
+      recipient: z.string().regex(/^[a-z0-9_]{1,8}$/),
+    }),
+    inputText: JSON.stringify({ recipient: '../etc/passwd' }),
+    replay: { recipient: 'inbox' },
+  },
+  {
+    name: 'a string past the length limit',
+    schema: z.object({ code: z.string().max(4) }),
+    inputText: JSON.stringify({ code: 'TOO-LONG' }),
+    replay: { code: 'ok' },
+  },
+  {
+    name: 'a number past the maximum',
+    schema: z.object({ amount: z.number().int().max(100) }),
+    inputText: JSON.stringify({ amount: 1_000_000 }),
+    replay: { amount: 1 },
+  },
+  {
+    name: 'a custom refinement',
+    schema: z.object({
+      note: z.string().refine(value => !value.includes('override'), {
+        message: 'note cannot override policy',
+      }),
+    }),
+    inputText: JSON.stringify({ note: 'please override the limit' }),
+    replay: { note: 'hello' },
+  },
+  {
+    name: 'unknown keys rejected by a strict object',
+    schema: z.object({ action: z.literal('read') }).strict(),
+    inputText: JSON.stringify({ action: 'read', path: '/secret' }),
+    replay: { action: 'read' },
+  },
+  {
+    name: 'a value of the wrong type',
+    schema: z.object({ amount: z.number() }),
+    inputText: JSON.stringify({ amount: 'all' }),
+    replay: { amount: 1 },
+  },
+  {
+    name: 'malformed JSON',
+    schema: z.object({ action: z.literal('read') }),
+    inputText: '{',
+    replay: { action: 'read' },
+  },
+  {
+    name: 'an empty payload',
+    schema: z.object({ action: z.literal('read') }),
+    inputText: '',
+    replay: { action: 'read' },
+  },
+];
+
+function validationFailureText(result: SubmittedResult | undefined): string {
+  if (result == null || result.isError !== true) return '';
+  return describeUnknown(result.output);
+}
+
+function describeUnknown(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (value instanceof Error) return value.toString();
+  if (Array.isArray(value)) return value.map(describeUnknown).join('\n');
+  if (value != null && typeof value === 'object') {
+    return Object.values(value).map(describeUnknown).join('\n');
+  }
+  return value == null ? '' : String(value);
+}
+
+async function runHostToolCall(options: {
+  schema: z.ZodType;
+  inputText: string;
+  replayText?: string;
+  approveStoredInput?: boolean;
+  trackGenerator?: boolean;
+}): Promise<{
+  calls: unknown[];
+  submitted: SubmittedResult[];
+  parts: TextStreamPart<ToolSet>[];
+}> {
+  const calls: unknown[] = [];
+  const transfer = options.trackGenerator
+    ? tool({
+        description: 'Transfer a restricted record',
+        inputSchema: options.schema,
+        execute: (args: unknown) => {
+          calls.push(structuredClone(args));
+          return (async function* () {
+            yield { leaked: true };
+          })();
+        },
+      })
+    : tool({
+        description: 'Transfer a restricted record',
+        inputSchema: options.schema,
+        execute: async (args: unknown) => {
+          calls.push(structuredClone(args));
+          return { applied: true };
+        },
+      });
+
+  const submitted: SubmittedResult[] = [];
+  const replayedCall: HarnessV1StreamPart[] =
+    options.replayText == null
+      ? []
+      : [
+          {
+            type: 'tool-call',
+            toolCallId: 'c1',
+            toolName: 'transfer',
+            input: options.replayText,
+          },
+        ];
+  const directCall: HarnessV1StreamPart[] = options.approveStoredInput
+    ? []
+    : [
+        {
+          type: 'tool-call',
+          toolCallId: 'c1',
+          toolName: 'transfer',
+          input: options.inputText,
+        },
+      ];
+
+  const { result, done } = runPrompt({
+    harness,
+    session: fakeSession(
+      [...directCall, ...replayedCall, ...finishEvents],
+      input => submitted.push(input),
+    ),
+    ...(options.approveStoredInput
+      ? { mode: 'continue' as const }
+      : { prompt: 'go' }),
+    instructions: undefined,
+    tools: { transfer } as ToolSet,
+    toolSpecs: [],
+    sandboxSession,
+    sessionWorkDir: WORK_DIR,
+    runtimeContext: {} as never,
+    abortSignal: undefined,
+    ...(options.approveStoredInput
+      ? {
+          pendingToolApprovals: [
+            {
+              approvalId: 'approval-1',
+              toolCallId: 'c1',
+              toolName: 'transfer',
+              input: options.inputText,
+              kind: 'custom' as const,
+              providerExecuted: false,
+            },
+          ],
+          toolApprovalContinuations: [
+            {
+              type: 'tool-approval-response' as const,
+              approvalId: 'approval-1',
+              approved: true,
+            },
+          ],
+        }
+      : {}),
+  });
+
+  const parts: TextStreamPart<ToolSet>[] = [];
+  for await (const part of result.fullStream) parts.push(part);
+  await done;
+  return { calls, submitted, parts };
+}
+
+describe('runPrompt host tool input schema', () => {
+  test.each(hostToolSchemaCases)(
+    'does not execute a host tool when the bridge input is $name',
+    async ({ schema, inputText }) => {
+      const { calls, submitted, parts } = await runHostToolCall({
+        schema,
+        inputText,
+      });
+
+      expect(calls).toEqual([]);
+      expect(parts).toContainEqual(
+        expect.objectContaining({
+          type: 'tool-call',
+          toolCallId: 'c1',
+          toolName: 'transfer',
+          invalid: true,
+        }),
+      );
+      expect(submitted).toEqual([
+        expect.objectContaining({ toolCallId: 'c1', isError: true }),
+      ]);
+      expect(validationFailureText(submitted[0])).toContain(
+        'Invalid input for tool transfer',
+      );
+      expect(parts).not.toContainEqual(
+        expect.objectContaining({
+          type: 'tool-result',
+          preliminary: true,
+        }),
+      );
+    },
+  );
+
+  test.each(hostToolSchemaCases)(
+    'does not execute an approved host tool when the stored input is $name',
+    async ({ schema, inputText, replay }) => {
+      const { calls, submitted, parts } = await runHostToolCall({
+        schema,
+        inputText,
+        replayText: JSON.stringify(replay),
+        approveStoredInput: true,
+      });
+
+      expect(calls).toEqual([]);
+      expect(submitted).toEqual([
+        expect.objectContaining({ toolCallId: 'c1', isError: true }),
+      ]);
+      expect(validationFailureText(submitted[0])).toContain(
+        'Invalid input for tool transfer',
+      );
+      expect(JSON.stringify(submitted)).not.toContain(JSON.stringify(replay));
+      expect(parts).not.toContainEqual(
+        expect.objectContaining({
+          type: 'tool-result',
+          output: { applied: true },
+        }),
+      );
+    },
+  );
+
+  test('executes a host tool with schema output, including transforms, defaults, and unknown-key stripping', async () => {
+    const inputText = JSON.stringify(schemaValidTransfer);
+    const { calls, submitted } = await runHostToolCall({
+      schema: transferSchema,
+      inputText,
+    });
+
+    expect(calls).toEqual([schemaValidatedTransfer]);
+    expect(submitted).toEqual([
+      { toolCallId: 'c1', output: { applied: true } },
+    ]);
+  });
+
+  test('executes an approved host tool with the schema output of the approved input, not a replayed bridge payload', async () => {
+    const inputText = JSON.stringify(schemaValidTransfer);
+    const replay = { action: 'delete', recipient: 'other', amount: 1_000_000 };
+    const { calls, submitted } = await runHostToolCall({
+      schema: transferSchema,
+      inputText,
+      replayText: JSON.stringify(replay),
+      approveStoredInput: true,
+    });
+
+    expect(calls).toEqual([schemaValidatedTransfer]);
+    expect(submitted).toEqual([
+      { toolCallId: 'c1', output: { applied: true } },
+    ]);
+  });
+
+  test('does not enter a generator host tool when the bridge input fails its schema', async () => {
+    const { calls, parts, submitted } = await runHostToolCall({
+      schema: z.object({ action: z.enum(['read']) }),
+      inputText: JSON.stringify({ action: 'delete' }),
+      trackGenerator: true,
+    });
+
+    expect(calls).toEqual([]);
+    expect(parts).not.toContainEqual(
+      expect.objectContaining({ preliminary: true, output: { leaked: true } }),
+    );
+    expect(validationFailureText(submitted[0])).toContain(
+      'Invalid input for tool transfer',
+    );
+  });
+
+  test('does not enter a generator host tool when the approved input fails its schema', async () => {
+    const { calls, parts, submitted } = await runHostToolCall({
+      schema: z.object({ action: z.enum(['read']) }),
+      inputText: JSON.stringify({ action: 'delete' }),
+      replayText: JSON.stringify({ action: 'read' }),
+      approveStoredInput: true,
+      trackGenerator: true,
+    });
+
+    expect(calls).toEqual([]);
+    expect(parts).not.toContainEqual(
+      expect.objectContaining({ preliminary: true, output: { leaked: true } }),
+    );
+    expect(validationFailureText(submitted[0])).toContain(
+      'Invalid input for tool transfer',
+    );
+  });
+});
