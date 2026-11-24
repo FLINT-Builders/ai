@@ -15,6 +15,8 @@ import { VERSION } from '../../version';
  * @param url - The URL to download from.
  * @param maxBytes - Maximum allowed download size in bytes. Defaults to 100 MiB.
  * @param abortSignal - An optional abort signal to cancel the download.
+ * @param headers - Optional request headers (e.g. provider authentication).
+ * They are dropped if the download is redirected to another origin.
  * @returns The downloaded data and media type.
  *
  * @throws DownloadError if the download fails or exceeds maxBytes.
@@ -23,15 +25,17 @@ export const download = async ({
   url,
   maxBytes,
   abortSignal,
+  headers: requestHeaders,
 }: {
   url: URL;
   maxBytes?: number;
   abortSignal?: AbortSignal;
+  headers?: Record<string, string>;
 }) => {
   const urlText = url.toString();
   try {
     const headers = withUserAgentSuffix(
-      {},
+      requestHeaders,
       `ai-sdk/${VERSION}`,
       getRuntimeEnvironmentUserAgent(),
     );

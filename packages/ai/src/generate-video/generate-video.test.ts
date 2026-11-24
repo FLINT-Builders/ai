@@ -351,6 +351,87 @@ describe('experimental_generateVideo', () => {
       // Should detect MP4 from file signature, not use octet-stream
       expect(result.video.mediaType).toBe('video/mp4');
     });
+
+    it('should pass model download headers to the download function', async () => {
+      const download = vi.fn(async () => ({
+        data: convertBase64ToUint8Array(mp4Base64),
+        mediaType: 'video/mp4',
+      }));
+      const getDownloadHeaders = vi.fn(async () => ({
+        'X-Auth': 'test-auth',
+        'x-unset': undefined,
+      }));
+
+      await experimental_generateVideo({
+        model: new MockVideoModelV4({
+          doGenerate: async () =>
+            createMockResponse({
+              videos: [
+                {
+                  type: 'url',
+                  url: 'https://example.com/video.mp4',
+                  mediaType: 'video/mp4',
+                },
+              ],
+            }),
+          getDownloadHeaders,
+        }),
+        prompt,
+        download,
+      });
+
+      expect(getDownloadHeaders).toHaveBeenCalledWith({
+        url: 'https://example.com/video.mp4',
+      });
+      expect(download).toHaveBeenCalledWith({
+        url: new URL('https://example.com/video.mp4'),
+        abortSignal: undefined,
+        headers: { 'x-auth': 'test-auth' },
+      });
+    });
+
+    it('should send model download headers only to the video origin', async () => {
+      const requests: Array<{ url: string; auth: string | null }> = [];
+      global.fetch = vi.fn(async (input: RequestInfo | URL, init) => {
+        const url = input.toString();
+        requests.push({
+          url,
+          auth: new Headers(init?.headers).get('x-auth'),
+        });
+        if (url === 'https://example.com/video.mp4') {
+          return new Response(null, {
+            status: 302,
+            headers: { location: 'https://cdn.example.net/video.mp4' },
+          });
+        }
+        return new Response(convertBase64ToUint8Array(mp4Base64), {
+          status: 200,
+          headers: { 'content-type': 'video/mp4' },
+        });
+      }) as typeof fetch;
+
+      await experimental_generateVideo({
+        model: new MockVideoModelV4({
+          doGenerate: async () =>
+            createMockResponse({
+              videos: [
+                {
+                  type: 'url',
+                  url: 'https://example.com/video.mp4',
+                  mediaType: 'video/mp4',
+                },
+              ],
+            }),
+          getDownloadHeaders: async () => ({ 'x-auth': 'test-auth' }),
+        }),
+        prompt,
+      });
+
+      expect(requests).toStrictEqual([
+        { url: 'https://example.com/video.mp4', auth: 'test-auth' },
+        { url: 'https://cdn.example.net/video.mp4', auth: null },
+      ]);
+    });
   });
 
   describe('when several calls are required', () => {

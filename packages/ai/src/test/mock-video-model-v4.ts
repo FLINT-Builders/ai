@@ -11,6 +11,7 @@ export class MockVideoModelV4 implements Experimental_VideoModelV4 {
   handleWebhookOption: Experimental_VideoModelV4['handleWebhookOption'];
   doStart: Experimental_VideoModelV4['doStart'];
   doStatus: Experimental_VideoModelV4['doStatus'];
+  getDownloadHeaders: Experimental_VideoModelV4['getDownloadHeaders'];
 
   constructor(
     options: {
@@ -21,6 +22,7 @@ export class MockVideoModelV4 implements Experimental_VideoModelV4 {
       handleWebhookOption?: Experimental_VideoModelV4['handleWebhookOption'];
       doStart?: Experimental_VideoModelV4['doStart'];
       doStatus?: Experimental_VideoModelV4['doStatus'];
+      getDownloadHeaders?: Experimental_VideoModelV4['getDownloadHeaders'];
     } = {},
   ) {
     this.provider = options.provider ?? 'mock-provider';
@@ -31,5 +33,6 @@ export class MockVideoModelV4 implements Experimental_VideoModelV4 {
     this.handleWebhookOption = options.handleWebhookOption;
     this.doStart = options.doStart;
     this.doStatus = options.doStatus;
+    this.getDownloadHeaders = options.getDownloadHeaders;
   }
 }

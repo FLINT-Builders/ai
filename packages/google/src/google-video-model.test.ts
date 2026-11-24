@@ -495,9 +495,43 @@ describe('GoogleVideoModel', () => {
         expect(result.videos).toHaveLength(1);
         expect(result.videos[0]).toStrictEqual({
           type: 'url',
-          url: 'https://generativelanguage.googleapis.com/files/video-456.mp4?key=test-api-key',
+          url: 'https://generativelanguage.googleapis.com/files/video-456.mp4',
           mediaType: 'video/mp4',
         });
+      }
+    });
+
+    it('should not include the API key in the completed result', async () => {
+      const model = createMockModel({
+        operationName: 'operations/no-key-op',
+        videos: [
+          {
+            video: {
+              uri: 'https://generativelanguage.googleapis.com/v1beta/files/video-1:download?alt=media',
+            },
+          },
+          {
+            video: {
+              uri: 'https://generativelanguage.googleapis.com/files/video-2.mp4',
+            },
+          },
+        ],
+      });
+
+      const result = await model.doStatus({
+        operation: { operationName: 'operations/no-key-op' },
+      });
+
+      expect(JSON.stringify(result)).not.toContain('test-api-key');
+      expect(result.status).toBe('completed');
+      if (result.status === 'completed') {
+        expect(result.videos.map(video => video.type === 'url' && video.url))
+          .toMatchInlineSnapshot(`
+            [
+              "https://generativelanguage.googleapis.com/v1beta/files/video-1:download?alt=media",
+              "https://generativelanguage.googleapis.com/files/video-2.mp4",
+            ]
+          `);
       }
     });
 
@@ -634,6 +668,36 @@ describe('GoogleVideoModel', () => {
 
       expect(capturedHeaders['x-custom']).toBe('value');
       expect(capturedHeaders['x-goog-api-key']).toBe('test-key');
+    });
+  });
+
+  describe('getDownloadHeaders', () => {
+    it('should return the API key header for URLs on the provider origin', async () => {
+      const model = createMockModel();
+
+      expect(
+        await model.getDownloadHeaders({
+          url: 'https://generativelanguage.googleapis.com/v1beta/files/video-1:download?alt=media',
+        }),
+      ).toStrictEqual({ 'x-goog-api-key': 'test-api-key' });
+    });
+
+    it('should not return headers for URLs on another origin', async () => {
+      const model = createMockModel();
+
+      expect(
+        await model.getDownloadHeaders({
+          url: 'https://attacker.example.com/files/video-1.mp4',
+        }),
+      ).toBeUndefined();
+      expect(
+        await model.getDownloadHeaders({
+          url: 'http://generativelanguage.googleapis.com/files/video-1.mp4',
+        }),
+      ).toBeUndefined();
+      expect(
+        await model.getDownloadHeaders({ url: 'not a url' }),
+      ).toBeUndefined();
     });
   });
 });
