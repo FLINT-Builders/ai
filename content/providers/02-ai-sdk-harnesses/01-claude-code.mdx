@@ -204,7 +204,11 @@ Additional Claude Code built-ins may also appear in `agent.tools` when they do
 not fit a common tool shape.
 
 Claude Code supports built-in tool approval requests when `permissionMode` is
-`allow-reads` or `allow-edits`.
+`allow-reads` or `allow-edits`. Under `allow-edits`, file edits are
+auto-approved only inside the session working directory. Edits to paths outside
+it, edits through symlinks that leave it, and edits to configuration that can
+run commands (for example `.claude/`, `.git/`, or `.mcp.json`) request approval
+like shell commands.
 
 ## Related
 
