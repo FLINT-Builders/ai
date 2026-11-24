@@ -19,6 +19,7 @@ import {
   type FetchFunction,
 } from '@ai-sdk/provider-utils';
 import { z } from 'zod/v4';
+import { findDoctypeEnd, startsWithSvgElement } from './detect-svg';
 import {
   quiveraiImageModelOptionsSchema,
   type QuiverAIImageModelOptions,
@@ -236,13 +237,6 @@ function toQuiverAIAnimationSource(image: ImageModelV4File) {
     base64 = convertUint8ArrayToBase64(bytes);
   }
 
-  if (!isSvg(bytes)) {
-    throw new InvalidArgumentError({
-      argument: 'files',
-      message: 'QuiverAI animate requires the input file to contain SVG data.',
-    });
-  }
-
   if (base64.length > maxAnimationSourceBase64Length) {
     throw new InvalidArgumentError({
       argument: 'files',
@@ -250,16 +244,19 @@ function toQuiverAIAnimationSource(image: ImageModelV4File) {
     });
   }
 
+  if (!isSvg(bytes)) {
+    throw new InvalidArgumentError({
+      argument: 'files',
+      message: 'QuiverAI animate requires the input file to contain SVG data.',
+    });
+  }
+
   return { base64 };
 }
 
 function isSvg(data: Uint8Array): boolean {
-  const head = new TextDecoder('utf-8', { fatal: false })
-    .decode(data.subarray(0, 4096))
-    .trimStart();
-
-  return /^(?:(?:<\?xml[\s\S]*?\?>|<!--[\s\S]*?-->|<!DOCTYPE[\s\S]*?>)\s*)*<svg(?:\s|>)/i.test(
-    head,
+  return startsWithSvgElement(
+    new TextDecoder('utf-8', { fatal: false }).decode(data.subarray(0, 4096)),
   );
 }
 
@@ -916,34 +913,6 @@ function hasValidXmlReferences(value: string) {
     position = value.indexOf('&', end + 1);
   }
   return true;
-}
-
-function findDoctypeEnd(value: string, position: number) {
-  let subsetDepth = 0;
-  let quote: '"' | "'" | undefined;
-
-  while (position < value.length) {
-    const character = value[position];
-    if (quote != null) {
-      if (character === quote) {
-        quote = undefined;
-      }
-    } else if (character === '"' || character === "'") {
-      quote = character;
-    } else if (character === '[') {
-      subsetDepth += 1;
-    } else if (character === ']') {
-      if (subsetDepth === 0) {
-        return -1;
-      }
-      subsetDepth -= 1;
-    } else if (character === '>' && subsetDepth === 0) {
-      return position + 1;
-    }
-    position += 1;
-  }
-
-  return -1;
 }
 
 function collectWarnings({
