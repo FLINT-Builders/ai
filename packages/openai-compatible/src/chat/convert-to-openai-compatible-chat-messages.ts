@@ -11,10 +11,26 @@ import {
   resolveFullMediaType,
 } from '@ai-sdk/provider-utils';
 
+// Provider options can originate from untrusted clients (e.g. UI message
+// metadata), so they must never define a message's role or turn structure.
+const RESERVED_MESSAGE_KEYS = new Set([
+  'role',
+  'content',
+  'tool_calls',
+  'tool_call_id',
+  'function_call',
+]);
+
 function getOpenAIMetadata(message: {
   providerOptions?: SharedV4ProviderMetadata;
 }) {
-  return message?.providerOptions?.openaiCompatible ?? {};
+  const metadata = message?.providerOptions?.openaiCompatible;
+  if (metadata == null) {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(metadata).filter(([key]) => !RESERVED_MESSAGE_KEYS.has(key)),
+  );
 }
 
 function getAudioFormat(mediaType: string): 'wav' | 'mp3' | null {
@@ -38,27 +54,28 @@ export function convertToOpenAICompatibleChatMessages(
     const metadata = getOpenAIMetadata({ ...message });
     switch (role) {
       case 'system': {
-        messages.push({ role: 'system', content, ...metadata });
+        messages.push({ ...metadata, role: 'system', content });
         break;
       }
 
       case 'user': {
         if (content.length === 1 && content[0].type === 'text') {
           messages.push({
+            ...getOpenAIMetadata(content[0]),
             role: 'user',
             content: content[0].text,
-            ...getOpenAIMetadata(content[0]),
           });
           break;
         }
 
         messages.push({
+          ...metadata,
           role: 'user',
           content: content.map(part => {
             const partMetadata = getOpenAIMetadata(part);
             switch (part.type) {
               case 'text': {
-                return { type: 'text', text: part.text, ...partMetadata };
+                return { ...partMetadata, type: 'text', text: part.text };
               }
               case 'file': {
                 switch (part.data.type) {
@@ -78,6 +95,7 @@ export function convertToOpenAICompatibleChatMessages(
 
                     if (topLevel === 'image') {
                       return {
+                        ...partMetadata,
                         type: 'image_url',
                         image_url: {
                           url:
@@ -85,12 +103,12 @@ export function convertToOpenAICompatibleChatMessages(
                               ? part.data.url.toString()
                               : `data:${resolveFullMediaType({ part })};base64,${convertToBase64(part.data.data)}`,
                         },
-                        ...partMetadata,
                       };
                     }
 
                     if (topLevel === 'video') {
                       return {
+                        ...partMetadata,
                         type: 'video_url',
                         video_url: {
                           url:
@@ -98,7 +116,6 @@ export function convertToOpenAICompatibleChatMessages(
                               ? part.data.url.toString()
                               : `data:${resolveFullMediaType({ part })};base64,${convertToBase64(part.data.data)}`,
                         },
-                        ...partMetadata,
                       };
                     }
 
@@ -118,12 +135,12 @@ export function convertToOpenAICompatibleChatMessages(
                       }
 
                       return {
+                        ...partMetadata,
                         type: 'input_audio',
                         input_audio: {
                           data: convertToBase64(part.data.data),
                           format,
                         },
-                        ...partMetadata,
                       };
                     }
 
@@ -142,12 +159,12 @@ export function convertToOpenAICompatibleChatMessages(
                       }
 
                       return {
+                        ...partMetadata,
                         type: 'file',
                         file: {
                           filename: part.filename ?? 'document.pdf',
                           file_data: `data:application/pdf;base64,${convertToBase64(part.data.data)}`,
                         },
-                        ...partMetadata,
                       };
                     }
 
@@ -162,9 +179,9 @@ export function convertToOpenAICompatibleChatMessages(
                             : new TextDecoder().decode(part.data.data);
 
                       return {
+                        ...partMetadata,
                         type: 'text',
                         text: textContent,
-                        ...partMetadata,
                       };
                     }
 
@@ -176,7 +193,6 @@ export function convertToOpenAICompatibleChatMessages(
               }
             }
           }),
-          ...metadata,
         });
 
         break;
@@ -213,13 +229,13 @@ export function convertToOpenAICompatibleChatMessages(
                 part.providerOptions?.[providerOptionsKey]?.thoughtSignature ??
                 part.providerOptions?.google?.thoughtSignature;
               toolCalls.push({
+                ...partMetadata,
                 id: part.toolCallId,
                 type: 'function',
                 function: {
                   name: part.toolName,
                   arguments: JSON.stringify(part.input),
                 },
-                ...partMetadata,
                 // Include extra_content for Google Gemini thought signatures
                 ...(thoughtSignature
                   ? {
@@ -237,11 +253,11 @@ export function convertToOpenAICompatibleChatMessages(
         }
 
         messages.push({
+          ...metadata,
           role: 'assistant',
           content: toolCalls.length > 0 ? text || null : text,
           ...(reasoning.length > 0 ? { reasoning_content: reasoning } : {}),
           tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
-          ...metadata,
         });
 
         break;
@@ -273,10 +289,10 @@ export function convertToOpenAICompatibleChatMessages(
 
           const toolResponseMetadata = getOpenAIMetadata(toolResponse);
           messages.push({
+            ...toolResponseMetadata,
             role: 'tool',
             tool_call_id: toolResponse.toolCallId,
             content: contentValue,
-            ...toolResponseMetadata,
           });
         }
         break;
