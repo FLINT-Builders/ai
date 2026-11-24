@@ -79,6 +79,12 @@ export type GoogleLanguageModelConfig = {
   supportedUrls?: () => LanguageModelV4['supportedUrls'];
 
   /**
+   * Cloud Storage buckets whose `gs://` file URLs may be forwarded to Google.
+   * `gs://` URLs for any other bucket are rejected.
+   */
+  allowedGcsBuckets?: ReadonlyArray<string>;
+
+  /**
    * Settings for downloading remote files in tool results before conversion.
    */
   downloadToolResultFiles?: {
@@ -312,6 +318,7 @@ export class GoogleLanguageModel implements LanguageModelV4 {
         providerOptionsNames,
         supportsFunctionResponseParts: usesGemini3Features,
         includeFunctionCallIds: !isVertexProvider,
+        allowedGcsBuckets: config.allowedGcsBuckets,
       },
     );
 

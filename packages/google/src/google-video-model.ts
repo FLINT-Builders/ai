@@ -22,6 +22,7 @@ import {
 } from '@ai-sdk/provider-utils';
 import { z } from 'zod/v4';
 import { googleFailedResponseHandler } from './google-error';
+import { getForwardableGcsUri } from './google-gcs-url';
 import {
   googleVideoModelOptionsSchema,
   type GoogleVideoModelOptions,
@@ -34,6 +35,7 @@ interface GoogleVideoModelConfig {
   headers?: Resolvable<Record<string, string | undefined>>;
   fetch?: FetchFunction;
   generateId?: () => string;
+  allowedGcsBuckets?: ReadonlyArray<string>;
   _internal?: {
     currentDate?: () => Date;
   };
@@ -74,11 +76,13 @@ function getInputReferences(
 function convertFileToGoogleImage(
   file: VideoModelV4File,
   warnings: SharedV4Warning[],
+  allowedGcsBuckets: ReadonlyArray<string> | undefined,
 ): Record<string, unknown> | undefined {
   if (file.type === 'url') {
-    if (file.url.startsWith('gs://')) {
+    const gcsUri = getForwardableGcsUri({ uri: file.url, allowedGcsBuckets });
+    if (gcsUri != null) {
       return {
-        gcsUri: file.url,
+        gcsUri,
         mimeType: 'image/png',
       };
     }
@@ -134,8 +138,9 @@ function convertProviderReferenceImage(
 function convertInputReferenceImage(
   file: VideoModelV4File,
   warnings: SharedV4Warning[],
+  allowedGcsBuckets: ReadonlyArray<string> | undefined,
 ): Record<string, unknown> | undefined {
-  const image = convertFileToGoogleImage(file, warnings);
+  const image = convertFileToGoogleImage(file, warnings, allowedGcsBuckets);
   return image != null ? { image, referenceType: 'asset' } : undefined;
 }
 
@@ -181,7 +186,11 @@ export class GoogleVideoModel implements VideoModelV4 {
 
     const startImage = resolveStartImage(options);
     if (startImage != null) {
-      const image = convertFileToGoogleImage(startImage, warnings);
+      const image = convertFileToGoogleImage(
+        startImage,
+        warnings,
+        this.config.allowedGcsBuckets,
+      );
       if (image != null) {
         instance.image = image;
       }
@@ -189,7 +198,11 @@ export class GoogleVideoModel implements VideoModelV4 {
 
     const lastFrameImage = getLastFrameImage(options);
     if (lastFrameImage != null) {
-      const lastFrame = convertFileToGoogleImage(lastFrameImage, warnings);
+      const lastFrame = convertFileToGoogleImage(
+        lastFrameImage,
+        warnings,
+        this.config.allowedGcsBuckets,
+      );
       if (lastFrame != null) {
         instance.lastFrame = lastFrame;
       }
@@ -198,7 +211,11 @@ export class GoogleVideoModel implements VideoModelV4 {
     const inputReferences = getInputReferences(options);
     if (inputReferences != null) {
       instance.referenceImages = inputReferences.flatMap(reference => {
-        const converted = convertInputReferenceImage(reference, warnings);
+        const converted = convertInputReferenceImage(
+          reference,
+          warnings,
+          this.config.allowedGcsBuckets,
+        );
         return converted != null ? [converted] : [];
       });
     } else if (googleOptions?.referenceImages != null) {

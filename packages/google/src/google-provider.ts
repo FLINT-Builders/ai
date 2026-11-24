@@ -36,6 +36,10 @@ import type {
 } from './google-image-settings';
 import { GoogleImageModel } from './google-image-model';
 import { GoogleFiles } from './google-files';
+import {
+  getAllowedGcsUrlPatterns,
+  validateAllowedGcsBuckets,
+} from './google-gcs-url';
 import { GoogleVideoModel } from './google-video-model';
 import type { GoogleVideoModelId } from './google-video-settings';
 import { GoogleSpeechModel } from './google-speech-model';
@@ -213,6 +217,16 @@ export interface GoogleProviderSettings {
    * Defaults to 'google.generative-ai'.
    */
   name?: string;
+
+  /**
+   * Cloud Storage buckets whose `gs://` file URLs may be forwarded to Google
+   * as-is. Use bare, lowercase bucket names (e.g. `my-bucket`).
+   *
+   * Google reads forwarded `gs://` URLs with your project's credentials, so
+   * only list buckets whose objects every user of your application may read.
+   * `gs://` URLs for other buckets are rejected. Defaults to no buckets.
+   */
+  allowedGcsBuckets?: string[];
 }
 
 const supportedExternalUrlMediaTypes = [
@@ -256,6 +270,10 @@ export function createGoogle(
 
   const providerName = options.name ?? 'google.generative-ai';
 
+  const allowedGcsBuckets = validateAllowedGcsBuckets(
+    options.allowedGcsBuckets,
+  );
+
   const getHeaders = () =>
     withUserAgentSuffix(
       {
@@ -280,6 +298,7 @@ export function createGoogle(
         `^https://(?:www\\.)?youtube\\.com/watch\\?v=[\\w-]+(?:&[\\w=&.-]*)?$`,
       ),
       new RegExp(`^https://youtu\\.be/[\\w-]+(?:\\?[\\w=&.-]*)?$`),
+      ...getAllowedGcsUrlPatterns(allowedGcsBuckets),
     ],
     ...(includeExternalUrls
       ? Object.fromEntries(
@@ -297,6 +316,7 @@ export function createGoogle(
     headers: getHeaders,
     generateId: options.generateId ?? generateId,
     fetch: options.fetch,
+    allowedGcsBuckets,
   };
 
   const createChatModel = (modelId: GoogleModelId) =>
@@ -331,6 +351,7 @@ export function createGoogle(
       baseURL,
       headers: getHeaders,
       fetch: options.fetch,
+      allowedGcsBuckets,
     });
 
   const createFiles = () =>
@@ -348,6 +369,7 @@ export function createGoogle(
       headers: getHeaders,
       fetch: options.fetch,
       generateId: options.generateId ?? generateId,
+      allowedGcsBuckets,
     });
 
   const createRealtimeModel = (modelId: string) =>
@@ -418,6 +440,7 @@ export function createGoogle(
         headers: getHeaders,
         generateId: options.generateId ?? generateId,
         fetch: options.fetch,
+        allowedGcsBuckets,
       },
     );
 

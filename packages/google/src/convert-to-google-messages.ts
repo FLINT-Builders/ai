@@ -12,6 +12,10 @@ import {
   resolveProviderReference,
   secureJsonParse,
 } from '@ai-sdk/provider-utils';
+import {
+  getForwardableGoogleFileUrl,
+  getForwardableGoogleReferenceUri,
+} from './google-gcs-url';
 import type {
   GoogleContent,
   GoogleContentPart,
@@ -213,6 +217,10 @@ export function convertToGoogleMessages(
     providerOptionsNames?: readonly string[];
     supportsFunctionResponseParts?: boolean;
     includeFunctionCallIds?: boolean;
+    /**
+     * Cloud Storage buckets whose `gs://` file URLs may be forwarded.
+     */
+    allowedGcsBuckets?: ReadonlyArray<string>;
   },
 ): GooglePrompt {
   const systemInstructionParts: Array<{ text: string }> = [];
@@ -226,6 +234,7 @@ export function convertToGoogleMessages(
   const supportsFunctionResponseParts =
     options?.supportsFunctionResponseParts ?? true;
   const includeFunctionCallIds = options?.includeFunctionCallIds ?? true;
+  const allowedGcsBuckets = options?.allowedGcsBuckets;
 
   let sentinelInjected = false;
   const missingSignatureToolNames: string[] = [];
@@ -286,7 +295,10 @@ export function convertToGoogleMessages(
                   parts.push({
                     fileData: {
                       mimeType: resolveFullMediaType({ part }),
-                      fileUri: part.data.url.toString(),
+                      fileUri: getForwardableGoogleFileUrl({
+                        url: part.data.url,
+                        allowedGcsBuckets,
+                      }),
                     },
                   });
                   break;
@@ -301,9 +313,12 @@ export function convertToGoogleMessages(
                   parts.push({
                     fileData: {
                       mimeType: resolveFullMediaType({ part }),
-                      fileUri: resolveProviderReference({
-                        reference: part.data.reference,
-                        provider: 'google',
+                      fileUri: getForwardableGoogleReferenceUri({
+                        uri: resolveProviderReference({
+                          reference: part.data.reference,
+                          provider: 'google',
+                        }),
+                        allowedGcsBuckets,
                       }),
                     },
                   });
@@ -417,9 +432,12 @@ export function convertToGoogleMessages(
                       return {
                         fileData: {
                           mimeType: part.mediaType,
-                          fileUri: resolveProviderReference({
-                            reference: part.data.reference,
-                            provider: 'google',
+                          fileUri: getForwardableGoogleReferenceUri({
+                            uri: resolveProviderReference({
+                              reference: part.data.reference,
+                              provider: 'google',
+                            }),
+                            allowedGcsBuckets,
                           }),
                         },
                         ...(providerOpts?.thought === true

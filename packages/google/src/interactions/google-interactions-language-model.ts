@@ -22,6 +22,7 @@ import {
   type Resolvable,
 } from '@ai-sdk/provider-utils';
 import { googleFailedResponseHandler } from '../google-error';
+import { getAllowedGcsUrlPatterns } from '../google-gcs-url';
 import { buildGoogleInteractionsStreamTransform } from './build-google-interactions-stream-transform';
 import {
   convertGoogleInteractionsUsage,
@@ -64,6 +65,12 @@ export type GoogleInteractionsConfig = {
   fetch?: FetchFunction;
   generateId: () => string;
   supportedUrls?: () => LanguageModelV4['supportedUrls'];
+
+  /**
+   * Cloud Storage buckets whose `gs://` file URLs may be forwarded to Google.
+   * `gs://` URLs for any other bucket are rejected.
+   */
+  allowedGcsBuckets?: ReadonlyArray<string>;
 };
 
 export type GoogleInteractionsModelInput =
@@ -137,7 +144,7 @@ export class GoogleInteractionsLanguageModel implements LanguageModelV4 {
       'video/*': [
         /^https?:\/\/(www\.)?youtube\.com\/watch\?v=.+/,
         /^https?:\/\/youtu\.be\/.+/,
-        /^gs:\/\/.+/,
+        ...getAllowedGcsUrlPatterns(this.config.allowedGcsBuckets),
       ],
     };
   }
@@ -269,6 +276,7 @@ export class GoogleInteractionsLanguageModel implements LanguageModelV4 {
       previousInteractionId: googleOptions?.previousInteractionId ?? undefined,
       store: googleOptions?.store ?? undefined,
       mediaResolution: googleOptions?.mediaResolution ?? undefined,
+      allowedGcsBuckets: this.config.allowedGcsBuckets,
     });
 
     warnings.push(...convWarnings);

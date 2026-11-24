@@ -12,6 +12,10 @@ import {
   resolveProviderReference,
   secureJsonParse,
 } from '@ai-sdk/provider-utils';
+import {
+  getForwardableGoogleFileUrl,
+  getForwardableGoogleReferenceUri,
+} from '../google-gcs-url';
 import type {
   GoogleInteractionsContent,
   GoogleInteractionsContentBlock,
@@ -57,11 +61,16 @@ export function convertToGoogleInteractionsInput({
   previousInteractionId,
   store,
   mediaResolution,
+  allowedGcsBuckets,
 }: {
   prompt: LanguageModelV4Prompt;
   previousInteractionId?: string;
   store?: boolean;
   mediaResolution?: GoogleInteractionsMediaResolution;
+  /**
+   * Cloud Storage buckets whose `gs://` file URLs may be forwarded.
+   */
+  allowedGcsBuckets?: ReadonlyArray<string>;
 }): ConvertToGoogleInteractionsInputResult {
   const warnings: Array<SharedV4Warning> = [];
 
@@ -112,6 +121,7 @@ export function convertToGoogleInteractionsInput({
               part,
               warnings,
               mediaResolution,
+              allowedGcsBuckets,
             });
             if (fileBlock != null) {
               content.push(fileBlock);
@@ -160,6 +170,7 @@ export function convertToGoogleInteractionsInput({
               part,
               warnings,
               mediaResolution,
+              allowedGcsBuckets,
             });
             if (fileBlock != null) {
               pendingModelOutput.push(fileBlock);
@@ -252,6 +263,7 @@ export function convertToGoogleInteractionsInput({
               | string
               | undefined,
             warnings,
+            allowedGcsBuckets,
           });
           content.push(block);
         }
@@ -277,10 +289,12 @@ function convertFilePartToContent({
   part,
   warnings,
   mediaResolution,
+  allowedGcsBuckets,
 }: {
   part: LanguageModelV4FilePart;
   warnings: Array<SharedV4Warning>;
   mediaResolution?: GoogleInteractionsMediaResolution;
+  allowedGcsBuckets: ReadonlyArray<string> | undefined;
 }): GoogleInteractionsContent | undefined {
   if (part.data.type === 'text') {
     return {
@@ -338,7 +352,10 @@ function convertFilePartToContent({
     case 'url': {
       return {
         type: kind,
-        uri: part.data.url.toString(),
+        uri: getForwardableGoogleFileUrl({
+          url: part.data.url,
+          allowedGcsBuckets,
+        }),
         ...(isFullMediaType(part.mediaType)
           ? { mime_type: part.mediaType }
           : {}),
@@ -347,9 +364,12 @@ function convertFilePartToContent({
       };
     }
     case 'reference': {
-      const uri = resolveProviderReference({
-        reference: part.data.reference,
-        provider: 'google',
+      const uri = getForwardableGoogleReferenceUri({
+        uri: resolveProviderReference({
+          reference: part.data.reference,
+          provider: 'google',
+        }),
+        allowedGcsBuckets,
       });
       return {
         type: kind,
@@ -497,12 +517,14 @@ function convertToolResultPart({
   output,
   signature,
   warnings,
+  allowedGcsBuckets,
 }: {
   toolCallId: string;
   toolName: string;
   output: LanguageModelV4ToolResultOutput;
   signature: string | undefined;
   warnings: Array<SharedV4Warning>;
+  allowedGcsBuckets: ReadonlyArray<string> | undefined;
 }): GoogleInteractionsFunctionResultContent {
   const base = {
     type: 'function_result' as const,
@@ -542,7 +564,11 @@ function convertToolResultPart({
             });
             continue;
           }
-          const imageBlock = filePartToImageBlock({ part: item, warnings });
+          const imageBlock = filePartToImageBlock({
+            part: item,
+            warnings,
+            allowedGcsBuckets,
+          });
           if (imageBlock != null) {
             blocks.push(imageBlock);
           }
@@ -561,6 +587,7 @@ function convertToolResultPart({
 function filePartToImageBlock({
   part,
   warnings,
+  allowedGcsBuckets,
 }: {
   part: {
     type: 'file';
@@ -573,6 +600,7 @@ function filePartToImageBlock({
     filename?: string;
   };
   warnings: Array<SharedV4Warning>;
+  allowedGcsBuckets: ReadonlyArray<string> | undefined;
 }): GoogleInteractionsImageContent | undefined {
   switch (part.data.type) {
     case 'data': {
@@ -594,15 +622,21 @@ function filePartToImageBlock({
     case 'url':
       return {
         type: 'image',
-        uri: part.data.url.toString(),
+        uri: getForwardableGoogleFileUrl({
+          url: part.data.url,
+          allowedGcsBuckets,
+        }),
         ...(isFullMediaType(part.mediaType)
           ? { mime_type: part.mediaType }
           : {}),
       };
     case 'reference': {
-      const uri = resolveProviderReference({
-        reference: part.data.reference,
-        provider: 'google',
+      const uri = getForwardableGoogleReferenceUri({
+        uri: resolveProviderReference({
+          reference: part.data.reference,
+          provider: 'google',
+        }),
+        allowedGcsBuckets,
       });
       return {
         type: 'image',
