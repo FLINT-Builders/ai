@@ -10,8 +10,15 @@ overrides:
   tinyexec: 1.0.2
   oxlint: 1.56.0
   tar: 7.5.19
-  '@workflow/world-local@4>undici': 7.29.0
-  '@workflow/world-vercel@4>undici': 7.29.0
+  '@workflow/world-local@4>undici': 7.30.2
+  '@workflow/world-vercel@4>undici': 7.30.2
+  '@workflow/world-local@^5.0.0-beta>undici': 7.30.2
+  '@workflow/world-vercel@^5.0.0-beta>undici': 7.30.2
+  '@vercel/sandbox@3>undici': 7.30.2
+  '@ai-sdk/provider-utils@4>undici': 6.29.1
+  '@ai-sdk/provider-utils@5>undici': 7.30.2
+  '@earendil-works/pi-coding-agent@0>undici': 8.13.1
+  'node-gyp@12>undici': 6.29.1
 
 minimumReleaseAge: 4320 # 3 days
 
