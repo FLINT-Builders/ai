@@ -571,6 +571,10 @@ await generateText({ model: wrappedModel, tools, toolApproval, prompt });
 
 The Rego rule at `path` returns either a `string[]` of allowed tool names or `{ tools: string[] }`. Function tools are matched by `name`; provider tools are matched by either their dotted `id` (`<provider>.<tool>`) or their bare `name`, so an allowlist authored with the plain name keeps them. Anything not in the allowlist gets dropped before the model sees the list.
 
+The allowlist is also enforced on the model's response: tool calls (and their streamed input, results, and approval requests) whose name is not in the allowlist computed for that call are dropped, so `generateText`, `streamText`, and agents never execute them. A model can name a tool it was not offered, so filtering the request alone is not a capability boundary.
+
+The middleware only sees model calls. Tool calls that the SDK runs without a model call, such as approved calls replayed from client-supplied message history, are governed by `toolApproval`. Pair the middleware with `opaPolicy` as the `toolApproval` gate, and set `experimental_toolApprovalSecret` when message history comes from the client.
+
 Two non-obvious benefits beyond the security one:
 
 - **Token savings.** The model doesn't read descriptions for tools it cannot call.
@@ -578,7 +582,7 @@ Two non-obvious benefits beyond the security one:
 
 ### Failure mode
 
-On a malformed OPA response or an evaluator error, the middleware **fails closed**: `params.tools` is set to `undefined`, so the model is told it has no tools available at all. Misconfiguration should not silently widen the agent's capability surface. If you want fail-open behavior, write the policy fallback in Rego (e.g., a default rule that returns the full tool list) rather than in the middleware.
+On a malformed OPA response or an evaluator error, the middleware **fails closed**: `params.tools` is set to `undefined`, so the model is told it has no tools available at all, and any tool call it returns anyway is dropped. Misconfiguration should not silently widen the agent's capability surface. If you want fail-open behavior, write the policy fallback in Rego (e.g., a default rule that returns the full tool list) rather than in the middleware.
 
 ## Scoping a discovered tool surface
 
@@ -626,7 +630,7 @@ Everything is exported from the package root, `@ai-sdk/policy-opa`.
 - `httpPolicyClient({ url, headers? })`: sync; constructs a client against a running OPA server.
 - `opaPolicy({ client, path, toInput? })`: returns a `ToolApprovalConfiguration` you pass to `generateText` / `streamText` / `ToolLoopAgent`. Fails closed (denies) if the backend errors.
 - `optionalOpaPolicy({ client, path, toInput? })`: like `opaPolicy` but returns `undefined` when `client` is `undefined`, for environments where the policy file is optional and absence means allow-all.
-- `opaCapabilityMiddleware({ client, path, toInput? })`: returns a `LanguageModelV4Middleware` that narrows `params.tools` to an OPA-supplied allowlist before the model sees them. Fails closed on malformed responses.
+- `opaCapabilityMiddleware({ client, path, toInput? })`: returns a `LanguageModelV4Middleware` that narrows `params.tools` to an OPA-supplied allowlist before the model sees them and drops tool calls outside that allowlist from the model response. Fails closed on malformed responses.
 - `normalizeOpaDecision(result)`: exposed for users who want to call OPA themselves and just need the result normalization.
 
 ## Versioning
