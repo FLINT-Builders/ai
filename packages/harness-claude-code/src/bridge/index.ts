@@ -12,6 +12,7 @@ import {
   type Experimental_BridgeUserMessageQueue,
 } from '@ai-sdk/harness/bridge';
 import { createCompactionLatch } from './compaction-latch';
+import { scopeAutoApprovedEdit } from './file-edit-scope';
 import type { StartMessage } from '../claude-code-bridge-protocol';
 import { randomUUID } from 'node:crypto';
 import { argv, env as procEnv, stdout } from 'node:process';
@@ -123,11 +124,8 @@ function toCommonName(nativeName: string): CommonBuiltinToolName | string {
 }
 
 const args = parseArgs(argv.slice(2));
-const workdir = args.workdir;
+const workdir = args.workdir || emitFatal('Missing --workdir argument.');
 const bridgeStateDir = args.bridgeStateDir;
-if (!workdir) {
-  emitFatal('Missing --workdir argument.');
-}
 if (!bridgeStateDir) {
   emitFatal('Missing --bridge-state-dir argument.');
 }
@@ -160,6 +158,7 @@ type Emit = (msg: Record<string, unknown>) => void;
 
 function createPermissionOptions(input: {
   start: StartMessage;
+  workdir: string;
   inactiveNativeTools: readonly string[];
   turn: BridgeTurn;
   emit: Emit;
@@ -198,7 +197,17 @@ function createPermissionOptions(input: {
           permissionMode,
         })
       ) {
-        return { behavior: 'allow', updatedInput: toolInput };
+        const updatedInput =
+          permissionMode === 'allow-edits'
+            ? await scopeAutoApprovedEdit({
+                toolName,
+                toolInput,
+                workdir: input.workdir,
+              })
+            : toolInput;
+        if (updatedInput != null) {
+          return { behavior: 'allow', updatedInput };
+        }
       }
 
       const approvalId = options.toolUseID;
@@ -447,6 +456,7 @@ async function runTurn(start: StartMessage, turn: BridgeTurn): Promise<void> {
   );
   const permissionOptions = createPermissionOptions({
     start,
+    workdir,
     inactiveNativeTools,
     turn,
     emit,
