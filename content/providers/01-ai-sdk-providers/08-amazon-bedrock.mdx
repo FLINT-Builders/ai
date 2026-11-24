@@ -382,6 +382,17 @@ See the [Amazon Bedrock Guardrails documentation](https://docs.aws.amazon.com/be
 
 You can mark individual text or image parts as guard content using `providerOptions` on the part itself. This wraps the part in a [`guardContent`](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_GuardrailConverseContentBlock.html) block, which tells Bedrock Guardrails to evaluate that content specifically.
 
+Part-level guard content is only applied when you set `allowPartGuardContent: true` in the call-level `bedrock` provider options. Otherwise, `guardContent` part options are ignored (with a warning) and all content is sent as regular content, so the guardrail evaluates the full input.
+
+<Note type="warning">
+  When a request contains any `guardContent` block, Bedrock Guardrails evaluate
+  only the marked content and skip the rest of the input. Part provider options
+  can come from clients (for example, `providerMetadata` on UI message parts is
+  forwarded by `convertToModelMessages`). When you enable
+  `allowPartGuardContent`, remove client-supplied `guardContent` options and set
+  them on the server.
+</Note>
+
 For text parts, you can also specify `guardContentQualifiers` to indicate how the content should be treated by the guardrail (e.g. as a grounding source, a query, or guard content):
 
 ```ts
@@ -389,6 +400,7 @@ const result = await generateText({
   model: bedrock('anthropic.claude-3-sonnet-20240229-v1:0'),
   providerOptions: {
     bedrock: {
+      allowPartGuardContent: true,
       guardrailConfig: {
         guardrailIdentifier: '1abcd2ef34gh',
         guardrailVersion: '1',

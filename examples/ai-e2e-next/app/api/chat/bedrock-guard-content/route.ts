@@ -1,9 +1,11 @@
 import { amazonBedrock } from '@ai-sdk/amazon-bedrock';
+import type { JSONObject } from '@ai-sdk/provider';
 import {
   convertToModelMessages,
   streamText,
   type ModelMessage,
   type UIMessage,
+  type UserContent,
 } from 'ai';
 
 export async function POST(req: Request) {
@@ -21,6 +23,7 @@ export async function POST(req: Request) {
       temperature: 0.7,
       providerOptions: {
         bedrock: {
+          allowPartGuardContent: true,
           guardrailConfig: {
             guardrailIdentifier:
               process.env.BEDROCK_GUARDRAIL_IDENTIFIER ?? '<guardrail-id>',
@@ -47,53 +50,51 @@ export async function POST(req: Request) {
   }
 }
 
+// Guard content flags decide what the guardrail evaluates, so flags sent by
+// the client are removed and only the server marks the latest user message.
 function applyGuardContentToLastUserMessage(
   messages: ModelMessage[],
 ): ModelMessage[] {
   const lastUserIndex = findLastIndex(messages, m => m.role === 'user');
-  if (lastUserIndex === -1) return messages;
 
   return messages.map((message, index) => {
-    if (index !== lastUserIndex || message.role !== 'user') return message;
+    if (message.role !== 'user') return message;
 
-    const content = message.content;
-
-    if (typeof content === 'string') {
-      return {
-        ...message,
-        content: [
-          {
-            type: 'text',
-            text: content,
-            providerOptions: {
-              bedrock: {
-                guardContent: true,
-              },
-            },
-          },
-        ],
-      };
-    }
+    const content: Exclude<UserContent, string> =
+      typeof message.content === 'string'
+        ? [{ type: 'text', text: message.content }]
+        : message.content;
 
     return {
       ...message,
       content: content.map(part => {
-        if (part.type === 'text') {
-          return {
-            ...part,
-            providerOptions: {
-              ...part.providerOptions,
-              bedrock: {
-                ...part.providerOptions?.bedrock,
-                guardContent: true,
-              },
+        const { bedrock, amazonBedrock, ...otherProviderOptions } =
+          part.providerOptions ?? {};
+        const guardContent = index === lastUserIndex && part.type === 'text';
+
+        return {
+          ...part,
+          providerOptions: {
+            ...otherProviderOptions,
+            bedrock: {
+              ...withoutGuardContent(amazonBedrock),
+              ...withoutGuardContent(bedrock),
+              ...(guardContent ? { guardContent: true } : {}),
             },
-          };
-        }
-        return part;
+          },
+        };
       }),
     };
   });
+}
+
+function withoutGuardContent(options: JSONObject | undefined): JSONObject {
+  const {
+    guardContent: _guardContent,
+    guardContentQualifiers: _guardContentQualifiers,
+    ...rest
+  } = options ?? {};
+  return rest;
 }
 
 function findLastIndex<T>(
