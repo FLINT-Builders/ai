@@ -1,6 +1,11 @@
 export * from '../google-language-model';
 export * from '../google-speech-model';
 export { googleTools } from '../google-tools';
+export {
+  getAllowedGcsUrlPatterns,
+  getForwardableGcsUri,
+  validateAllowedGcsBuckets,
+} from '../google-gcs-url';
 export type { GoogleModelId } from '../google-language-model-options';
 export {
   GoogleInteractionsLanguageModel,

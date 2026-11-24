@@ -65,6 +65,12 @@ You can use the following optional settings to customize the Google provider ins
   Custom provider name.
   Defaults to `'google.generative-ai'`.
 
+- **allowedGcsBuckets** _string[]_
+
+  Optional. Cloud Storage buckets whose `gs://` file URLs are passed to Google as-is, e.g. `['my-bucket']`.
+  Google reads these objects with your project's credentials, so only list buckets whose objects every user of your application may read.
+  `gs://` URLs for any other bucket are rejected. Defaults to no buckets.
+
 ## Language Models
 
 You can create models that call the [Google Generative AI API](https://ai.google.dev/api/rest) using the provider instance.

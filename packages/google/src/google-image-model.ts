@@ -27,6 +27,7 @@ interface GoogleImageModelConfig {
   headers?: Resolvable<Record<string, string | undefined>>;
   fetch?: FetchFunction;
   generateId?: () => string;
+  allowedGcsBuckets?: ReadonlyArray<string>;
   _internal?: {
     currentDate?: () => Date;
   };
@@ -170,6 +171,7 @@ export class GoogleImageModel implements ImageModelV4 {
       headers: this.config.headers ?? {},
       fetch: this.config.fetch,
       generateId: this.config.generateId ?? defaultGenerateId,
+      allowedGcsBuckets: this.config.allowedGcsBuckets,
     });
 
     // Call language model with image-only response modality

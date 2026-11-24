@@ -18,6 +18,7 @@ import {
   type FetchFunction,
   type Resolvable,
 } from '@ai-sdk/provider-utils';
+import { getForwardableGcsUri } from '@ai-sdk/google/internal';
 import { z } from 'zod/v4';
 import { googleVertexFailedResponseHandler } from './google-vertex-error';
 import {
@@ -32,6 +33,7 @@ interface GoogleVertexVideoModelConfig {
   headers?: Resolvable<Record<string, string | undefined>>;
   fetch?: FetchFunction;
   generateId?: () => string;
+  allowedGcsBuckets?: ReadonlyArray<string>;
   _internal?: {
     currentDate?: () => Date;
   };
@@ -72,11 +74,13 @@ function getInputReferences(
 function convertFileToVertexImage(
   file: VideoModelV4File,
   warnings: SharedV4Warning[],
+  allowedGcsBuckets: ReadonlyArray<string> | undefined,
 ): Record<string, unknown> | undefined {
   if (file.type === 'url') {
-    if (file.url.startsWith('gs://')) {
+    const gcsUri = getForwardableGcsUri({ uri: file.url, allowedGcsBuckets });
+    if (gcsUri != null) {
       return {
-        gcsUri: file.url,
+        gcsUri,
         mimeType: 'image/png',
       };
     }
@@ -104,8 +108,9 @@ function convertFileToVertexImage(
 function convertInputReferenceImage(
   file: VideoModelV4File,
   warnings: SharedV4Warning[],
+  allowedGcsBuckets: ReadonlyArray<string> | undefined,
 ): Record<string, unknown> | undefined {
-  const image = convertFileToVertexImage(file, warnings);
+  const image = convertFileToVertexImage(file, warnings, allowedGcsBuckets);
   return image != null ? { image, referenceType: 'asset' } : undefined;
 }
 
@@ -156,7 +161,11 @@ export class GoogleVertexVideoModel implements VideoModelV4 {
 
     const startImage = resolveStartImage(options);
     if (startImage != null) {
-      const image = convertFileToVertexImage(startImage, warnings);
+      const image = convertFileToVertexImage(
+        startImage,
+        warnings,
+        this.config.allowedGcsBuckets,
+      );
       if (image != null) {
         instance.image = image;
       }
@@ -164,7 +173,11 @@ export class GoogleVertexVideoModel implements VideoModelV4 {
 
     const lastFrameImage = getLastFrameImage(options);
     if (lastFrameImage != null) {
-      const lastFrame = convertFileToVertexImage(lastFrameImage, warnings);
+      const lastFrame = convertFileToVertexImage(
+        lastFrameImage,
+        warnings,
+        this.config.allowedGcsBuckets,
+      );
       if (lastFrame != null) {
         instance.lastFrame = lastFrame;
       }
@@ -173,7 +186,11 @@ export class GoogleVertexVideoModel implements VideoModelV4 {
     const inputReferences = getInputReferences(options);
     if (inputReferences != null) {
       instance.referenceImages = inputReferences.flatMap(reference => {
-        const converted = convertInputReferenceImage(reference, warnings);
+        const converted = convertInputReferenceImage(
+          reference,
+          warnings,
+          this.config.allowedGcsBuckets,
+        );
         return converted != null ? [converted] : [];
       });
     } else if (googleVertexOptions?.referenceImages != null) {

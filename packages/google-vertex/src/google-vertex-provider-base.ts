@@ -1,7 +1,9 @@
 import {
+  getAllowedGcsUrlPatterns,
   GoogleInteractionsLanguageModel,
   GoogleLanguageModel,
   GoogleSpeechModel,
+  validateAllowedGcsBuckets,
   type GoogleInteractionsAgentName,
   type GoogleInteractionsModelId,
   type GoogleInteractionsModelInput,
@@ -204,6 +206,16 @@ export interface GoogleVertexProviderSettings {
      */
     maxBytes?: number;
   };
+
+  /**
+   * Cloud Storage buckets whose `gs://` file URLs may be forwarded to Vertex
+   * as-is. Use bare, lowercase bucket names (e.g. `my-bucket`).
+   *
+   * Vertex reads forwarded `gs://` URLs with your project's service identity,
+   * so only list buckets whose objects every user of your application may
+   * read. `gs://` URLs for other buckets are rejected. Defaults to no buckets.
+   */
+  allowedGcsBuckets?: string[];
 }
 
 /**
@@ -216,6 +228,10 @@ export function createGoogleVertex(
     settingValue: options.apiKey,
     environmentVariableName: 'GOOGLE_VERTEX_API_KEY',
   });
+
+  const allowedGcsBuckets = validateAllowedGcsBuckets(
+    options.allowedGcsBuckets,
+  );
 
   const loadGoogleVertexProject = () =>
     loadSetting({
@@ -301,10 +317,11 @@ export function createGoogleVertex(
         '*': [
           // HTTP URLs:
           /^https?:\/\/.*$/,
-          // Google Cloud Storage URLs:
-          /^gs:\/\/.*$/,
+          // Google Cloud Storage URLs in explicitly allowed buckets:
+          ...getAllowedGcsUrlPatterns(allowedGcsBuckets),
         ],
       }),
+      allowedGcsBuckets,
       downloadToolResultFiles: {
         maxBytes: options.toolResultDownloads?.maxBytes ?? 7 * 1024 * 1024,
       },
@@ -332,6 +349,7 @@ export function createGoogleVertex(
         // the base-model paths carry.
         ...createConfig('interactions', { endpoint: true }),
         generateId: options.generateId ?? generateId,
+        allowedGcsBuckets,
       },
     );
   };
@@ -343,12 +361,14 @@ export function createGoogleVertex(
     new GoogleVertexImageModel(modelId, {
       ...createConfig('image'),
       generateId: options.generateId ?? generateId,
+      allowedGcsBuckets,
     });
 
   const createVideoModel = (modelId: GoogleVertexVideoModelId) =>
     new GoogleVertexVideoModel(modelId, {
       ...createConfig('video'),
       generateId: options.generateId ?? generateId,
+      allowedGcsBuckets,
     });
 
   const createSpeechModel = (modelId: GoogleVertexSpeechModelId) => {

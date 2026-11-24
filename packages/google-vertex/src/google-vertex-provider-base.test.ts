@@ -1,3 +1,4 @@
+import type * as GoogleInternalModule from '@ai-sdk/google/internal';
 import type * as ProviderUtilsModule from '@ai-sdk/provider-utils';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createGoogleVertex } from './google-vertex-provider-base';
@@ -40,17 +41,22 @@ vi.mock('@ai-sdk/provider-utils', async importOriginal => {
   };
 });
 
-vi.mock('@ai-sdk/google/internal', () => ({
-  GoogleLanguageModel: vi.fn(),
-  GoogleInteractionsLanguageModel: vi.fn(),
-  GoogleSpeechModel: vi.fn(),
-  googleTools: {
-    googleSearch: vi.fn(),
-    urlContext: vi.fn(),
-    fileSearch: vi.fn(),
-    codeExecution: vi.fn(),
-  },
-}));
+vi.mock('@ai-sdk/google/internal', async importOriginal => {
+  const actual = await importOriginal<typeof GoogleInternalModule>();
+  return {
+    getAllowedGcsUrlPatterns: actual.getAllowedGcsUrlPatterns,
+    validateAllowedGcsBuckets: actual.validateAllowedGcsBuckets,
+    GoogleLanguageModel: vi.fn(),
+    GoogleInteractionsLanguageModel: vi.fn(),
+    GoogleSpeechModel: vi.fn(),
+    googleTools: {
+      googleSearch: vi.fn(),
+      urlContext: vi.fn(),
+      fileSearch: vi.fn(),
+      codeExecution: vi.fn(),
+    },
+  };
+});
 
 vi.mock('./google-vertex-embedding-model', () => ({
   GoogleVertexEmbeddingModel: vi.fn(),
@@ -531,6 +537,7 @@ describe('google-vertex-provider-base', () => {
     expect(vi.mocked(GoogleLanguageModel).mock.calls[0][1])
       .toMatchInlineSnapshot(`
         {
+          "allowedGcsBuckets": [],
           "baseURL": "https://aiplatform.us.rep.googleapis.com/v1beta1/projects/test-project/locations/us/publishers/google",
           "downloadToolResultFiles": {
             "maxBytes": 7340032,
@@ -554,6 +561,7 @@ describe('google-vertex-provider-base', () => {
     expect(vi.mocked(GoogleLanguageModel).mock.calls[0][1])
       .toMatchInlineSnapshot(`
         {
+          "allowedGcsBuckets": [],
           "baseURL": "https://aiplatform.eu.rep.googleapis.com/v1beta1/projects/test-project/locations/eu/publishers/google",
           "downloadToolResultFiles": {
             "maxBytes": 7340032,

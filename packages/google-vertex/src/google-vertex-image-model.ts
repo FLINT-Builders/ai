@@ -1,5 +1,8 @@
 import type { GoogleLanguageModelOptions } from '@ai-sdk/google';
-import { GoogleLanguageModel } from '@ai-sdk/google/internal';
+import {
+  getAllowedGcsUrlPatterns,
+  GoogleLanguageModel,
+} from '@ai-sdk/google/internal';
 import type {
   ImageModelV4,
   LanguageModelV4Prompt,
@@ -21,6 +24,7 @@ interface GoogleVertexImageModelConfig {
   headers?: Resolvable<Record<string, string | undefined>>;
   fetch?: typeof fetch;
   generateId?: () => string;
+  allowedGcsBuckets?: ReadonlyArray<string>;
   _internal?: {
     currentDate?: () => Date;
   };
@@ -141,8 +145,12 @@ export class GoogleVertexImageModel implements ImageModelV4 {
       fetch: this.config.fetch,
       generateId: this.config.generateId ?? defaultGenerateId,
       supportedUrls: () => ({
-        '*': [/^https?:\/\/.*$/, /^gs:\/\/.*$/],
+        '*': [
+          /^https?:\/\/.*$/,
+          ...getAllowedGcsUrlPatterns(this.config.allowedGcsBuckets),
+        ],
       }),
+      allowedGcsBuckets: this.config.allowedGcsBuckets,
     });
 
     const {
