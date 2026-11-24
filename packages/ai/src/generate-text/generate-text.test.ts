@@ -11996,6 +11996,7 @@ describe('generateText', () => {
 
         expect(prepareStepResponseMessages).toMatchInlineSnapshot(`
           [
+            [],
             [
               {
                 "content": [

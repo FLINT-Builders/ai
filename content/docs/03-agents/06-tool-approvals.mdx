@@ -278,7 +278,7 @@ When a manual approval status includes a reason, it is available as
 
 In the standard `useChat` pattern, the server rebuilds the conversation from the messages the client sends each turn. The server does not persist conversation state between requests. This means the message history is client-controlled input.
 
-Tool approvals reconstructed from this history are re-validated before execution: the tool input is checked against the tool's schema, and the approval policy is re-evaluated. However, without additional protection, a client that crafts a valid-looking approval for a schema-conforming input can bypass the human-in-the-loop step.
+Tool approvals reconstructed from this history are re-validated before execution: the tool input is checked against the tool's schema, and the approval policy is re-evaluated. A replayed approval only runs a tool that is active for the request (`activeTools`, including the `prepareStep` result for the first step) and whose policy still requires user approval or explicitly approves the call. Otherwise the call is reported to the model as a tool error and is not executed. However, without additional protection, a client that crafts a valid-looking approval for a schema-conforming input can bypass the human-in-the-loop step.
 
 If your tools perform sensitive operations (modifying data, spending money, calling external APIs, accessing private resources), use `experimental_toolApprovalSecret` to cryptographically bind approvals to the server that issued them.
 

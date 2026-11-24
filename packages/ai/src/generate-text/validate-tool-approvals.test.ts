@@ -1,4 +1,4 @@
-import { tool } from '@ai-sdk/provider-utils';
+import { getErrorMessage, tool } from '@ai-sdk/provider-utils';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod/v4';
 import type { CollectedToolApprovals } from './collect-tool-approvals';
@@ -28,6 +28,7 @@ describe('validateApprovedToolApprovals', () => {
     const tools = {
       tool1: tool({
         inputSchema: z.object({ value: z.string() }),
+        needsApproval: true,
         execute: async () => 'ok',
       }),
     };
@@ -114,7 +115,7 @@ describe('validateApprovedToolApprovals', () => {
     });
 
     expect(result.approvedToolApprovals).toHaveLength(0);
-    expect(result.invalidToolApprovals[0].error.message).toMatch(
+    expect(getErrorMessage(result.invalidToolApprovals[0].error)).toMatch(
       /Invalid input for tool deleteFile/,
     );
   });
@@ -220,6 +221,7 @@ describe('validateApprovedToolApprovals', () => {
     const tools = {
       tool1: tool({
         inputSchema: z.object({ value: z.string() }),
+        needsApproval: true,
         // no execute -> client-side tool, not run on the server
       }),
     };
@@ -251,6 +253,7 @@ describe('validateApprovedToolApprovals', () => {
       const tools = {
         tool1: tool({
           inputSchema: z.object({ value: z.string() }),
+          needsApproval: true,
           execute: async () => 'ok',
         }),
       };
@@ -382,6 +385,7 @@ describe('validateApprovedToolApprovals', () => {
       const tools = {
         tool1: tool({
           inputSchema: z.object({ value: z.string() }),
+          needsApproval: true,
           execute: async () => 'ok',
         }),
       };

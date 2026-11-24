@@ -2032,15 +2032,43 @@ class DefaultStreamTextResult<
 
       // initial tool execution step stream
       if (deniedToolApprovals.length > 0 || approvedToolApprovals.length > 0) {
+        const localApprovedToolApprovalCandidates =
+          approvedToolApprovals.filter(
+            toolApproval => !toolApproval.toolCall.providerExecuted,
+          );
+
+        // Replayed approvals come from client-supplied history, so they may
+        // only run tools that are active for the first step of this request.
+        const approvalReplayTools =
+          localApprovedToolApprovalCandidates.length > 0
+            ? (filterActiveTools({
+                tools,
+                activeTools:
+                  (
+                    await prepareStep?.({
+                      model,
+                      steps: [],
+                      stepNumber: 0,
+                      instructions: instructionsForNextStep,
+                      initialInstructions: initialPrompt.instructions,
+                      messages: initialMessages,
+                      initialMessages,
+                      responseMessages: [],
+                      toolsContext,
+                      runtimeContext,
+                      experimental_sandbox: sandbox,
+                    })
+                  )?.activeTools ?? activeTools,
+              }) as TOOLS | undefined)
+            : tools;
+
         const {
           approvedToolApprovals: localApprovedToolApprovals,
           deniedToolApprovals: revalidationDeniedToolApprovals,
           invalidToolApprovals,
         } = await validateApprovedToolApprovals<TOOLS, RUNTIME_CONTEXT>({
-          approvedToolApprovals: approvedToolApprovals.filter(
-            toolApproval => !toolApproval.toolCall.providerExecuted,
-          ),
-          tools,
+          approvedToolApprovals: localApprovedToolApprovalCandidates,
+          tools: approvalReplayTools,
           toolApproval,
           messages: initialMessages,
           toolsContext,
@@ -2111,7 +2139,7 @@ class DefaultStreamTextResult<
             localApprovedToolApprovals.map(async toolApproval => {
               const result = await executeToolCall({
                 toolCall: toolApproval.toolCall,
-                tools,
+                tools: approvalReplayTools,
                 callId,
                 messages: initialMessages,
                 abortSignal,
