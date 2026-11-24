@@ -168,16 +168,31 @@ const server = createTestServer({
 });
 
 describe('supportedUrls', () => {
-  it('should support S3 URLs for image and video parts', () => {
+  it('should not support S3 URLs by default', () => {
     const model = new AmazonBedrockChatLanguageModel(modelId, {
       baseUrl: () => baseUrl,
       generateId: () => 'test-id',
       fetch: fakeFetchWithAuth,
     });
 
+    expect(model.supportedUrls).toEqual({});
+  });
+
+  it('should support S3 URLs of allowed buckets for image and video parts', () => {
+    const model = new AmazonBedrockChatLanguageModel(modelId, {
+      baseUrl: () => baseUrl,
+      generateId: () => 'test-id',
+      fetch: fakeFetchWithAuth,
+      allowedS3Buckets: [
+        'my-test-bucket',
+        'my.dotted.bucket',
+        'Invalid_Bucket',
+      ],
+    });
+
     expect(model.supportedUrls).toEqual({
-      'image/*': [/^s3:\/\//],
-      'video/*': [/^s3:\/\//],
+      'image/*': [/^s3:\/\/my-test-bucket\/./, /^s3:\/\/my\.dotted\.bucket\/./],
+      'video/*': [/^s3:\/\/my-test-bucket\/./, /^s3:\/\/my\.dotted\.bucket\/./],
     });
   });
 });

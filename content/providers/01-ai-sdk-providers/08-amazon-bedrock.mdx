@@ -190,6 +190,19 @@ You can use the following optional settings to customize the Amazon Bedrock prov
   You can use it as a middleware to intercept requests,
   or to provide a custom fetch implementation for e.g. testing.
 
+- **allowedS3Buckets** _string[]_
+
+  Optional. S3 buckets that chat models may reference with `s3://` URLs in
+  image and video file parts (e.g. `s3://my-bucket/path/to/image.png`). Bedrock
+  reads these objects with the provider's AWS credentials. By default, no
+  buckets are allowed and `s3://` URLs are rejected.
+
+  <Note type="warning">
+    Only list buckets whose every object may be shown to anyone who can send a
+    prompt, and never pass `s3://` URLs that come from end users (e.g. file
+    parts in chat messages sent by a client).
+  </Note>
+
 ## Language Models
 
 You can create models that call the Bedrock API using the provider instance.

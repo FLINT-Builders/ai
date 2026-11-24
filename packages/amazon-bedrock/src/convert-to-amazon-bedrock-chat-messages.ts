@@ -41,6 +41,7 @@ import {
   amazonBedrockTextPartProviderOptions,
 } from './amazon-bedrock-chat-language-model-options';
 import { amazonBedrockReasoningMetadataSchema } from './amazon-bedrock-reasoning-metadata';
+import { getAllowedAmazonBedrockS3Uri } from './amazon-bedrock-s3-url';
 import { normalizeToolCallId } from './normalize-tool-call-id';
 
 function getCachePoint(
@@ -86,9 +87,11 @@ function sanitizeDocumentName(filename: string): string {
 function getAmazonBedrockMediaSource({
   data,
   functionality,
+  allowedS3Buckets,
 }: {
   data: Extract<LanguageModelV4FilePart['data'], { type: 'data' | 'url' }>;
   functionality: string;
+  allowedS3Buckets: readonly string[] | undefined;
 }):
   | AmazonBedrockImageBlock['image']['source']
   | AmazonBedrockVideoBlock['video']['source'] {
@@ -96,12 +99,13 @@ function getAmazonBedrockMediaSource({
     case 'data':
       return { bytes: convertToBase64(data.data) };
     case 'url':
-      if (data.url.protocol !== 's3:') {
-        throw new UnsupportedFunctionalityError({ functionality });
-      }
       return {
         s3Location: {
-          uri: data.url.toString(),
+          uri: getAllowedAmazonBedrockS3Uri({
+            url: data.url,
+            allowedS3Buckets,
+            functionality,
+          }),
         },
       };
   }
@@ -162,6 +166,7 @@ async function getImagePartGuardContentOptions(
 export async function convertToAmazonBedrockChatMessages(
   prompt: LanguageModelV4Prompt,
   isMistral: boolean = false,
+  allowedS3Buckets?: readonly string[],
 ): Promise<{
   system: AmazonBedrockSystemMessages;
   messages: AmazonBedrockMessages;
@@ -259,6 +264,7 @@ export async function convertToAmazonBedrockChatMessages(
                                 source: getAmazonBedrockMediaSource({
                                   data: part.data,
                                   functionality: 'File URL data',
+                                  allowedS3Buckets,
                                 }),
                               },
                             });
@@ -272,6 +278,7 @@ export async function convertToAmazonBedrockChatMessages(
                                 source: getAmazonBedrockMediaSource({
                                   data: part.data,
                                   functionality: 'File URL data',
+                                  allowedS3Buckets,
                                 }),
                               },
                             });
@@ -326,6 +333,7 @@ export async function convertToAmazonBedrockChatMessages(
                                 source: getAmazonBedrockMediaSource({
                                   data: part.data,
                                   functionality: 'File URL data',
+                                  allowedS3Buckets,
                                 }),
                               },
                             };
@@ -347,6 +355,7 @@ export async function convertToAmazonBedrockChatMessages(
                                 source: getAmazonBedrockMediaSource({
                                   data: part.data,
                                   functionality: 'File URL data',
+                                  allowedS3Buckets,
                                 }),
                               },
                             });
@@ -397,6 +406,7 @@ export async function convertToAmazonBedrockChatMessages(
                     content: await convertToolResultOutput({
                       output: part.output,
                       getDocumentName,
+                      allowedS3Buckets,
                     }),
                   },
                 });
@@ -540,6 +550,7 @@ export async function convertToAmazonBedrockChatMessages(
                     content: await convertToolResultOutput({
                       output: part.output,
                       getDocumentName,
+                      allowedS3Buckets,
                     }),
                   },
                 });
@@ -600,9 +611,11 @@ function appendToUserMessage(
 async function convertToolResultOutput({
   output,
   getDocumentName,
+  allowedS3Buckets,
 }: {
   output: LanguageModelV4ToolResultPart['output'];
   getDocumentName: (filename: string | undefined) => string;
+  allowedS3Buckets: readonly string[] | undefined;
 }): Promise<AmazonBedrockToolResultBlock['toolResult']['content']> {
   switch (output.type) {
     case 'content': {
@@ -632,6 +645,7 @@ async function convertToolResultOutput({
                       source: getAmazonBedrockMediaSource({
                         data: contentPart.data,
                         functionality: `tool result file data of type "${contentPart.data.type}"`,
+                        allowedS3Buckets,
                       }),
                     },
                   };
@@ -642,6 +656,7 @@ async function convertToolResultOutput({
                       source: getAmazonBedrockMediaSource({
                         data: contentPart.data,
                         functionality: `tool result file data of type "${contentPart.data.type}"`,
+                        allowedS3Buckets,
                       }),
                     },
                   };

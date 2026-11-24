@@ -113,6 +113,17 @@ export interface AmazonBedrockProviderSettings {
     Omit<AmazonBedrockCredentials, 'region'>
   >;
 
+  /**
+   * S3 buckets that chat models may reference with `s3://` URLs in image and
+   * video file parts. Bedrock reads these objects with the provider's AWS
+   * credentials, so only list buckets whose every object may be shown to
+   * anyone who can send a prompt, and never pass `s3://` URLs that come from
+   * end users.
+   *
+   * By default, no buckets are allowed and `s3://` URLs are rejected.
+   */
+  allowedS3Buckets?: string[];
+
   // for testing
   generateId?: () => string;
 }
@@ -334,6 +345,7 @@ export function createAmazonBedrock(
       fetch: fetchFunction,
       generateId,
       modelFamily: settings.modelFamily,
+      allowedS3Buckets: options.allowedS3Buckets,
     });
 
   const provider = function (
