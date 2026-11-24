@@ -191,6 +191,16 @@ export const amazonBedrockLanguageModelChatOptions = z.object({
    * - 'flex': Lower-cost tier for flexible latency workloads
    */
   serviceTier: z.enum(['reserved', 'priority', 'default', 'flex']).optional(),
+  /**
+   * Honor part-level `guardContent` provider options on user text and image
+   * parts. When any part is sent as a `guardContent` block, Bedrock Guardrails
+   * evaluate only the marked content and skip the rest of the input.
+   *
+   * Only enable this when the application controls which parts are marked,
+   * e.g. by setting `guardContent` server-side after converting client
+   * messages. Defaults to `false`, which sends all parts as regular content.
+   */
+  allowPartGuardContent: z.boolean().optional(),
 });
 
 export type AmazonBedrockLanguageModelChatOptions = z.infer<

@@ -7,6 +7,7 @@ import {
   type LanguageModelV4Prompt,
   type LanguageModelV4ToolResultPart,
   type SharedV4ProviderMetadata,
+  type SharedV4Warning,
 } from '@ai-sdk/provider';
 import {
   convertToBase64,
@@ -159,14 +160,63 @@ async function getImagePartGuardContentOptions(
   );
 }
 
+function requestsGuardContent(
+  providerMetadata: SharedV4ProviderMetadata | undefined,
+): boolean {
+  return (
+    (providerMetadata?.amazonBedrock ?? providerMetadata?.bedrock)
+      ?.guardContent === true
+  );
+}
+
 export async function convertToAmazonBedrockChatMessages(
   prompt: LanguageModelV4Prompt,
   isMistral: boolean = false,
+  {
+    allowPartGuardContent = false,
+    warnings,
+  }: {
+    /**
+     * Whether part-level `guardContent` provider options are honored.
+     * Any `guardContent` block limits Bedrock Guardrails to the marked
+     * content, so part options that may originate from an untrusted client
+     * (e.g. UI message `providerMetadata`) must not enable it implicitly.
+     */
+    allowPartGuardContent?: boolean;
+    warnings?: SharedV4Warning[];
+  } = {},
 ): Promise<{
   system: AmazonBedrockSystemMessages;
   messages: AmazonBedrockMessages;
 }> {
   const blocks = groupIntoBlocks(prompt);
+
+  let hasWarnedIgnoredGuardContent = false;
+  const resolveGuardContentOptions = async <T>(
+    providerMetadata: SharedV4ProviderMetadata | undefined,
+    parseOptions: (
+      providerMetadata: SharedV4ProviderMetadata | undefined,
+    ) => Promise<T>,
+  ): Promise<T | undefined> => {
+    if (allowPartGuardContent) {
+      return parseOptions(providerMetadata);
+    }
+
+    if (
+      !hasWarnedIgnoredGuardContent &&
+      requestsGuardContent(providerMetadata)
+    ) {
+      hasWarnedIgnoredGuardContent = true;
+      warnings?.push({
+        type: 'unsupported',
+        feature: 'guardContent',
+        details:
+          'Part-level guardContent provider options are ignored unless the allowPartGuardContent provider option is set to true.',
+      });
+    }
+
+    return undefined;
+  };
 
   let system: AmazonBedrockSystemMessages = [];
   const messages: AmazonBedrockMessages = [];
@@ -213,8 +263,9 @@ export async function convertToAmazonBedrockChatMessages(
 
                 switch (part.type) {
                   case 'text': {
-                    const textOptions = await getTextPartGuardContentOptions(
+                    const textOptions = await resolveGuardContentOptions(
                       part.providerOptions,
+                      getTextPartGuardContentOptions,
                     );
 
                     if (textOptions?.guardContent) {
@@ -316,8 +367,9 @@ export async function convertToAmazonBedrockChatMessages(
                         switch (getTopLevelMediaType(fullMediaType)) {
                           case 'image': {
                             const imageOptions =
-                              await getImagePartGuardContentOptions(
+                              await resolveGuardContentOptions(
                                 part.providerOptions,
+                                getImagePartGuardContentOptions,
                               );
                             const imageBlock: AmazonBedrockImageBlock = {
                               image: {
