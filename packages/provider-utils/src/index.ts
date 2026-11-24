@@ -102,7 +102,10 @@ export {
   type Schema,
   type ValidationResult,
 } from './schema';
-export { serializeModelOptions } from './serialize-model-options';
+export {
+  deserializeModelConfig,
+  serializeModelOptions,
+} from './serialize-model-options';
 export { SerializationError } from './serialization-error';
 export { secureJsonParse } from './secure-json-parse';
 export {

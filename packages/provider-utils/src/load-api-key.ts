@@ -1,4 +1,5 @@
 import { LoadAPIKeyError } from '@ai-sdk/provider';
+import { recordEnvironmentValue } from './record-environment-values';
 
 export function loadApiKey({
   apiKey,
@@ -41,5 +42,6 @@ export function loadApiKey({
     });
   }
 
+  recordEnvironmentValue(environmentVariableName, apiKey);
   return apiKey;
 }

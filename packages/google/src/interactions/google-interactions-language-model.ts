@@ -15,6 +15,7 @@ import {
   parseProviderOptions,
   postJsonToApi,
   resolve,
+  deserializeModelConfig,
   serializeModelOptions,
   WORKFLOW_DESERIALIZE,
   WORKFLOW_SERIALIZE,
@@ -101,7 +102,7 @@ export class GoogleInteractionsLanguageModel implements LanguageModelV4 {
   }) {
     return new GoogleInteractionsLanguageModel(
       options.agent != null ? { agent: options.agent } : options.modelId,
-      options.config,
+      deserializeModelConfig(options.config),
     );
   }
 

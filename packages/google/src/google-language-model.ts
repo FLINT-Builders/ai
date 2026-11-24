@@ -24,6 +24,7 @@ import {
   parseProviderOptions,
   postJsonToApi,
   resolve,
+  deserializeModelConfig,
   serializeModelOptions,
   WORKFLOW_SERIALIZE,
   WORKFLOW_DESERIALIZE,
@@ -105,7 +106,10 @@ export class GoogleLanguageModel implements LanguageModelV4 {
     modelId: string;
     config: GoogleLanguageModelConfig;
   }) {
-    return new GoogleLanguageModel(options.modelId, options.config);
+    return new GoogleLanguageModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   constructor(modelId: GoogleModelId, config: GoogleLanguageModelConfig) {

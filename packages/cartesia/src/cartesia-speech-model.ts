@@ -4,6 +4,7 @@ import {
   createBinaryResponseHandler,
   parseProviderOptions,
   postJsonToApi,
+  deserializeModelConfig,
   serializeModelOptions,
   WORKFLOW_SERIALIZE,
   WORKFLOW_DESERIALIZE,
@@ -158,7 +159,10 @@ export class CartesiaSpeechModel implements SpeechModelV4 {
     modelId: CartesiaSpeechModelId;
     config: CartesiaSpeechModelConfig;
   }) {
-    return new CartesiaSpeechModel(options.modelId, options.config);
+    return new CartesiaSpeechModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   constructor(

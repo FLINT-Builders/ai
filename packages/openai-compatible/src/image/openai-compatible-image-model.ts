@@ -18,6 +18,7 @@ import {
   downloadBlob,
   postFormDataToApi,
   postJsonToApi,
+  deserializeModelConfig,
   serializeModelOptions,
   WORKFLOW_SERIALIZE,
   WORKFLOW_DESERIALIZE,
@@ -67,7 +68,10 @@ export class OpenAICompatibleImageModel implements ImageModelV4 {
     modelId: string;
     config: OpenAICompatibleImageModelConfig;
   }) {
-    return new OpenAICompatibleImageModel(options.modelId, options.config);
+    return new OpenAICompatibleImageModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   constructor(

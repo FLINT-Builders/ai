@@ -21,6 +21,7 @@ import {
   mapReasoningToProviderEffort,
   parseProviderOptions,
   postJsonToApi,
+  deserializeModelConfig,
   serializeModelOptions,
   StreamingToolCallTracker,
   WORKFLOW_SERIALIZE,
@@ -133,7 +134,10 @@ export class MoonshotAIChatLanguageModel implements LanguageModelV4 {
     modelId: MoonshotAIChatModelId;
     config: MoonshotAIChatConfig;
   }) {
-    return new MoonshotAIChatLanguageModel(options.modelId, options.config);
+    return new MoonshotAIChatLanguageModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   constructor(modelId: MoonshotAIChatModelId, config: MoonshotAIChatConfig) {

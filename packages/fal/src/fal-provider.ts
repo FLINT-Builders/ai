@@ -7,6 +7,7 @@ import {
   type TranscriptionModelV4,
 } from '@ai-sdk/provider';
 import {
+  loadOptionalSetting,
   withoutTrailingSlash,
   withUserAgentSuffix,
   type FetchFunction,
@@ -106,20 +107,19 @@ function loadFalApiKey({
     );
   }
 
-  let envApiKey = process.env.FAL_API_KEY;
-  if (envApiKey == null) {
-    envApiKey = process.env.FAL_KEY;
-  }
+  const envApiKey =
+    loadOptionalSetting({
+      settingValue: undefined,
+      environmentVariableName: 'FAL_API_KEY',
+    }) ??
+    loadOptionalSetting({
+      settingValue: undefined,
+      environmentVariableName: 'FAL_KEY',
+    });
 
   if (envApiKey == null) {
     throw new Error(
       `${description} API key is missing. Pass it using the 'apiKey' parameter or set either the FAL_API_KEY or FAL_KEY environment variable.`,
-    );
-  }
-
-  if (typeof envApiKey !== 'string') {
-    throw new Error(
-      `${description} API key must be a string. The value of the environment variable is not a string.`,
     );
   }
 

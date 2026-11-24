@@ -15,6 +15,7 @@ import {
   postJsonToApi,
   resolve,
   safeParseJSON,
+  deserializeModelConfig,
   serializeModelOptions,
   waitForWebSocketBufferDrain,
   WORKFLOW_DESERIALIZE,
@@ -123,7 +124,7 @@ export class GoogleVertexGeminiTranscriptionModel implements TranscriptionModelV
   }) {
     return new GoogleVertexGeminiTranscriptionModel(
       options.modelId,
-      options.config,
+      deserializeModelConfig(options.config),
     );
   }
 

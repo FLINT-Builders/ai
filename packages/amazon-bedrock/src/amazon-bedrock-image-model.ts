@@ -10,6 +10,7 @@ import {
   parseProviderOptions,
   postJsonToApi,
   resolve,
+  deserializeModelConfig,
   serializeModelOptions,
   WORKFLOW_SERIALIZE,
   WORKFLOW_DESERIALIZE,
@@ -48,7 +49,10 @@ export class AmazonBedrockImageModel implements ImageModelV4 {
     modelId: string;
     config: AmazonBedrockImageModelConfig;
   }) {
-    return new AmazonBedrockImageModel(options.modelId, options.config);
+    return new AmazonBedrockImageModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   get maxImagesPerCall(): number {

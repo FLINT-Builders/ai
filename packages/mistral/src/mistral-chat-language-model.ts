@@ -18,6 +18,7 @@ import {
   mapReasoningToProviderEffort,
   parseProviderOptions,
   postJsonToApi,
+  deserializeModelConfig,
   serializeModelOptions,
   StreamingToolCallTracker,
   WORKFLOW_SERIALIZE,
@@ -90,7 +91,10 @@ export class MistralChatLanguageModel implements LanguageModelV4 {
     modelId: MistralChatModelId;
     config: MistralChatConfig;
   }) {
-    return new MistralChatLanguageModel(options.modelId, options.config);
+    return new MistralChatLanguageModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   constructor(modelId: MistralChatModelId, config: MistralChatConfig) {

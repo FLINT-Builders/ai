@@ -9,6 +9,7 @@ import {
   createJsonResponseHandler,
   parseProviderOptions,
   postJsonToApi,
+  deserializeModelConfig,
   serializeModelOptions,
   WORKFLOW_DESERIALIZE,
   WORKFLOW_SERIALIZE,
@@ -52,7 +53,10 @@ export class PerplexityEmbeddingModel implements EmbeddingModelV4 {
     modelId: PerplexityEmbeddingModelId;
     config: PerplexityEmbeddingConfig;
   }) {
-    return new PerplexityEmbeddingModel(options.modelId, options.config);
+    return new PerplexityEmbeddingModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   constructor(

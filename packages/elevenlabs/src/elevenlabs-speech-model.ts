@@ -4,6 +4,7 @@ import {
   createBinaryResponseHandler,
   parseProviderOptions,
   postJsonToApi,
+  deserializeModelConfig,
   serializeModelOptions,
   WORKFLOW_SERIALIZE,
   WORKFLOW_DESERIALIZE,
@@ -41,7 +42,10 @@ export class ElevenLabsSpeechModel implements SpeechModelV4 {
     modelId: ElevenLabsSpeechModelId;
     config: ElevenLabsSpeechModelConfig;
   }) {
-    return new ElevenLabsSpeechModel(options.modelId, options.config);
+    return new ElevenLabsSpeechModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   constructor(

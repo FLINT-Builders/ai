@@ -124,7 +124,6 @@ describe('BlackForestLabsVideoModel', () => {
         config: {
           provider: 'black-forest-labs.video',
           baseURL: TEST_BASE_URL,
-          headers: { 'x-key': 'test-key' },
           pollIntervalMillis: 1,
           pollTimeoutMillis: 5000,
         },

@@ -1,3 +1,5 @@
+import { recordEnvironmentValue } from './record-environment-values';
+
 /**
  * Loads an optional `string` setting from the environment or a parameter.
  *
@@ -26,5 +28,6 @@ export function loadOptionalSetting({
     return undefined;
   }
 
+  recordEnvironmentValue(environmentVariableName, settingValue);
   return settingValue;
 }

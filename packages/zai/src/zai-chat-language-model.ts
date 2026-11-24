@@ -10,6 +10,7 @@ import type {
 } from '@ai-sdk/provider';
 import {
   parseProviderOptions,
+  deserializeModelConfig,
   serializeModelOptions,
   WORKFLOW_DESERIALIZE,
   WORKFLOW_SERIALIZE,
@@ -100,7 +101,7 @@ export class ZaiChatLanguageModel
   }) {
     return new ZaiChatLanguageModel(
       options.modelId,
-      options.config as unknown as ZaiChatConfig,
+      deserializeModelConfig(options.config) as unknown as ZaiChatConfig,
     );
   }
 

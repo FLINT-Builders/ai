@@ -18,6 +18,7 @@ import {
   mapReasoningToProviderBudget,
   parseProviderOptions,
   postJsonToApi,
+  deserializeModelConfig,
   serializeModelOptions,
   StreamingToolCallTracker,
   WORKFLOW_SERIALIZE,
@@ -65,7 +66,10 @@ export class AlibabaChatLanguageModel implements LanguageModelV4 {
     modelId: AlibabaChatModelId;
     config: AlibabaConfig;
   }) {
-    return new AlibabaChatLanguageModel(options.modelId, options.config);
+    return new AlibabaChatLanguageModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   constructor(modelId: AlibabaChatModelId, config: AlibabaConfig) {

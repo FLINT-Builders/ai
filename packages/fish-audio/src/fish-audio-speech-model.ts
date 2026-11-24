@@ -4,6 +4,7 @@ import {
   createBinaryResponseHandler,
   parseProviderOptions,
   postJsonToApi,
+  deserializeModelConfig,
   serializeModelOptions,
   WORKFLOW_DESERIALIZE,
   WORKFLOW_SERIALIZE,
@@ -81,7 +82,10 @@ export class FishAudioSpeechModel implements SpeechModelV4 {
     modelId: FishAudioSpeechModelId;
     config: FishAudioSpeechModelConfig;
   }) {
-    return new FishAudioSpeechModel(options.modelId, options.config);
+    return new FishAudioSpeechModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   constructor(

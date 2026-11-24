@@ -7,6 +7,7 @@ import type {
   LanguageModelV4StreamResult,
 } from '@ai-sdk/provider';
 import {
+  deserializeModelConfig,
   serializeModelOptions,
   WORKFLOW_DESERIALIZE,
   WORKFLOW_SERIALIZE,
@@ -48,7 +49,10 @@ export class CerebrasChatLanguageModel
     modelId: CerebrasChatModelId;
     config: CerebrasChatConfig;
   }) {
-    return new CerebrasChatLanguageModel(options.modelId, options.config);
+    return new CerebrasChatLanguageModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   async doGenerate(

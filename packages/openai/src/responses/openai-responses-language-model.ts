@@ -24,6 +24,7 @@ import {
   isCustomReasoning,
   parseProviderOptions,
   postJsonToApi,
+  deserializeModelConfig,
   serializeModelOptions,
   WORKFLOW_DESERIALIZE,
   WORKFLOW_SERIALIZE,
@@ -229,7 +230,9 @@ export class OpenAIResponsesLanguageModel implements LanguageModelV4 {
   }) {
     return new OpenAIResponsesLanguageModel(
       options.modelId as OpenAIResponsesModelId,
-      prepareOpenAIConfigForWorkflowDeserialize(options.config),
+      prepareOpenAIConfigForWorkflowDeserialize(
+        deserializeModelConfig(options.config),
+      ),
     );
   }
 

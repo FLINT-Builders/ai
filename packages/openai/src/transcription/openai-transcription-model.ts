@@ -15,6 +15,7 @@ import {
   parseProviderOptions,
   postFormDataToApi,
   safeParseJSON,
+  deserializeModelConfig,
   serializeModelOptions,
   toWebSocketUrl,
   WORKFLOW_DESERIALIZE,
@@ -150,7 +151,10 @@ export class OpenAITranscriptionModel implements TranscriptionModelV4 {
     modelId: OpenAITranscriptionModelId;
     config: OpenAITranscriptionModelConfig;
   }) {
-    return new OpenAITranscriptionModel(options.modelId, options.config);
+    return new OpenAITranscriptionModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   get provider(): string {

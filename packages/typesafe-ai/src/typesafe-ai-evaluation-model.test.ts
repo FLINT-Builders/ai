@@ -278,28 +278,41 @@ it('forwards cancellation to fetch', async () => {
 });
 
 it('serializes and restores a model for workflow boundaries', async () => {
-  const original = new EvaluationTypeSafeAiModel('jev-latest', {
-    provider: 'typesafe.evaluation',
-    baseURL: 'https://api.typesafe.ai/v1',
-    headers: () => ({ Authorization: 'Bearer restored-key' }),
-    fetch: vi.fn(),
-  });
+  vi.stubEnv('TYPESAFE_AI_API_KEY', 'placeholder-serialized-key');
+  const original = createTypeSafeAi({ fetch: vi.fn() }).evaluationModel(
+    'jev-latest',
+  ) as EvaluationTypeSafeAiModel;
   const serialized = EvaluationTypeSafeAiModel[WORKFLOW_SERIALIZE](original);
   expect(serialized.config.fetch).toBeUndefined();
+  expect(JSON.stringify(serialized)).not.toContain(
+    'placeholder-serialized-key',
+  );
+  vi.stubEnv('TYPESAFE_AI_API_KEY', 'placeholder-restored-key');
   const restored = EvaluationTypeSafeAiModel[WORKFLOW_DESERIALIZE](
-    serialized as unknown as Parameters<
+    JSON.parse(JSON.stringify(serialized)) as Parameters<
       (typeof EvaluationTypeSafeAiModel)[typeof WORKFLOW_DESERIALIZE]
     >[0],
   );
   await restored.doEvaluate(options);
   expect(server.calls[0].requestHeaders.authorization).toBe(
-    'Bearer restored-key',
+    'Bearer placeholder-restored-key',
+  );
+  expect(server.calls[0].requestUserAgent).toContain(
+    `ai-sdk/typesafe-ai/${VERSION}`,
   );
   expect(restored.supportedQuestionTypes).toEqual([
     'choice',
     'score',
     'boolean',
   ]);
+});
+
+it('does not serialize an explicitly passed API key', () => {
+  const original = createTypeSafeAi({
+    apiKey: 'placeholder-explicit-key',
+  }).evaluationModel('jev-latest') as EvaluationTypeSafeAiModel;
+  const serialized = EvaluationTypeSafeAiModel[WORKFLOW_SERIALIZE](original);
+  expect(JSON.stringify(serialized)).not.toContain('placeholder-explicit-key');
 });
 
 it('restores authentication from the environment when no headers are serialized', async () => {

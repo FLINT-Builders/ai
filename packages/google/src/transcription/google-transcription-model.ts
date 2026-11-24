@@ -15,6 +15,7 @@ import {
   postJsonToApi,
   resolve,
   safeParseJSON,
+  deserializeModelConfig,
   serializeModelOptions,
   waitForWebSocketBufferDrain,
   WORKFLOW_DESERIALIZE,
@@ -111,7 +112,10 @@ export class GoogleTranscriptionModel implements TranscriptionModelV4 {
     modelId: GoogleTranscriptionModelId;
     config: GoogleTranscriptionModelConfig;
   }) {
-    return new GoogleTranscriptionModel(options.modelId, options.config);
+    return new GoogleTranscriptionModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   get provider(): string {

@@ -11,6 +11,7 @@ import {
   convertToBase64,
   parseProviderOptions,
   safeParseJSON,
+  deserializeModelConfig,
   serializeModelOptions,
   toWebSocketUrl,
   WORKFLOW_DESERIALIZE,
@@ -51,7 +52,10 @@ export class OpenAISpeechTranslationModel implements SpeechTranslationModelV4 {
     modelId: OpenAISpeechTranslationModelId;
     config: OpenAISpeechTranslationModelConfig;
   }) {
-    return new OpenAISpeechTranslationModel(options.modelId, options.config);
+    return new OpenAISpeechTranslationModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   get provider(): string {

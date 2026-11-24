@@ -13,6 +13,7 @@ import {
   parseProviderOptions,
   postFormDataToApi,
   safeParseJSON,
+  deserializeModelConfig,
   serializeModelOptions,
   toWebSocketUrl,
   waitForWebSocketBufferDrain,
@@ -67,7 +68,10 @@ export class XaiTranscriptionModel implements TranscriptionModelV4 {
     modelId: '';
     config: XaiTranscriptionModelConfig;
   }) {
-    return new XaiTranscriptionModel(options.modelId, options.config);
+    return new XaiTranscriptionModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   get provider(): string {

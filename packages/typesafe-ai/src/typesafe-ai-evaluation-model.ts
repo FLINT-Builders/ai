@@ -10,6 +10,7 @@ import {
   loadApiKey,
   postJsonToApi,
   resolve,
+  deserializeModelConfig,
   serializeModelOptions,
   withUserAgentSuffix,
   WORKFLOW_SERIALIZE,
@@ -56,7 +57,10 @@ export class EvaluationTypeSafeAiModel implements EvaluationModelV4 {
     modelId: TypeSafeAiEvaluationModelId;
     config: TypeSafeAiEvaluationModelConfig;
   }) {
-    return new EvaluationTypeSafeAiModel(options.modelId, options.config);
+    return new EvaluationTypeSafeAiModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   async doEvaluate({

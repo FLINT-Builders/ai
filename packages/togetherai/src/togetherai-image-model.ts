@@ -6,6 +6,7 @@ import {
   createJsonErrorResponseHandler,
   parseProviderOptions,
   postJsonToApi,
+  deserializeModelConfig,
   serializeModelOptions,
   WORKFLOW_SERIALIZE,
   WORKFLOW_DESERIALIZE,
@@ -46,7 +47,10 @@ export class TogetherAIImageModel implements ImageModelV4 {
     modelId: TogetherAIImageModelId;
     config: TogetherAIImageModelConfig;
   }) {
-    return new TogetherAIImageModel(options.modelId, options.config);
+    return new TogetherAIImageModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   constructor(

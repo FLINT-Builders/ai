@@ -7,6 +7,7 @@ import {
   convertToBase64,
   generateId as defaultGenerateId,
   parseProviderOptions,
+  deserializeModelConfig,
   serializeModelOptions,
   WORKFLOW_SERIALIZE,
   WORKFLOW_DESERIALIZE,
@@ -46,7 +47,11 @@ export class GoogleImageModel implements ImageModelV4 {
     modelId: string;
     config: GoogleImageModelConfig;
   }) {
-    return new GoogleImageModel(options.modelId, {}, options.config);
+    return new GoogleImageModel(
+      options.modelId,
+      {},
+      deserializeModelConfig(options.config),
+    );
   }
 
   get maxImagesPerCall(): number {

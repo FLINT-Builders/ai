@@ -4,6 +4,7 @@ import {
   createJsonResponseHandler,
   parseProviderOptions,
   postToApi,
+  deserializeModelConfig,
   serializeModelOptions,
   WORKFLOW_DESERIALIZE,
   WORKFLOW_SERIALIZE,
@@ -42,7 +43,10 @@ export class MistralSpeechModel implements SpeechModelV4 {
     modelId: MistralSpeechModelId;
     config: MistralSpeechModelConfig;
   }) {
-    return new MistralSpeechModel(options.modelId, options.config);
+    return new MistralSpeechModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   get provider(): string {

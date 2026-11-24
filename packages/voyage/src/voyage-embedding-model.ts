@@ -7,6 +7,7 @@ import {
   createJsonResponseHandler,
   parseProviderOptions,
   postJsonToApi,
+  deserializeModelConfig,
   serializeModelOptions,
   WORKFLOW_SERIALIZE,
   WORKFLOW_DESERIALIZE,
@@ -46,7 +47,10 @@ export class VoyageEmbeddingModel implements EmbeddingModelV4 {
     modelId: VoyageEmbeddingModelId;
     config: VoyageEmbeddingConfig;
   }) {
-    return new VoyageEmbeddingModel(options.modelId, options.config);
+    return new VoyageEmbeddingModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   constructor(modelId: VoyageEmbeddingModelId, config: VoyageEmbeddingConfig) {
