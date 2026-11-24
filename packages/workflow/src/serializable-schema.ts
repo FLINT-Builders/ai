@@ -136,8 +136,10 @@ function resolveToolDescription<TOOLS extends ToolSet>({
  * Reconstructs tool objects from serializable tool definitions inside a step.
  *
  * Wraps each tool's JSON Schema with `jsonSchema()` and validates tool call
- * arguments against the schema using Ajv. This provides runtime type safety
- * equivalent to using zod schemas directly with the AI SDK.
+ * arguments against the schema using Ajv. This is not equivalent to the
+ * original schema: refinements, transforms, and defaults that have no JSON
+ * Schema form are lost. Tool input must be re-validated against the original
+ * tool's `inputSchema` outside the step before it reaches tool code.
  */
 export function resolveSerializableTools(
   tools: Record<string, SerializableToolDef>,
