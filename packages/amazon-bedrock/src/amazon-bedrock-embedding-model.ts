@@ -8,6 +8,7 @@ import {
   parseProviderOptions,
   postJsonToApi,
   resolve,
+  deserializeModelConfig,
   serializeModelOptions,
   WORKFLOW_SERIALIZE,
   WORKFLOW_DESERIALIZE,
@@ -55,7 +56,10 @@ export class AmazonBedrockEmbeddingModel implements EmbeddingModelV4 {
     modelId: string;
     config: AmazonBedrockEmbeddingConfig;
   }) {
-    return new AmazonBedrockEmbeddingModel(options.modelId, options.config);
+    return new AmazonBedrockEmbeddingModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   constructor(

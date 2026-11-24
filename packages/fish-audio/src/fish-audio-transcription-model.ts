@@ -6,6 +6,7 @@ import {
   mediaTypeToExtension,
   parseProviderOptions,
   postFormDataToApi,
+  deserializeModelConfig,
   serializeModelOptions,
   WORKFLOW_DESERIALIZE,
   WORKFLOW_SERIALIZE,
@@ -40,7 +41,10 @@ export class FishAudioTranscriptionModel implements TranscriptionModelV4 {
     modelId: FishAudioTranscriptionModelId;
     config: FishAudioTranscriptionModelConfig;
   }) {
-    return new FishAudioTranscriptionModel(options.modelId, options.config);
+    return new FishAudioTranscriptionModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   constructor(

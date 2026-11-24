@@ -9,6 +9,7 @@ import {
   parseProviderOptions,
   postJsonToApi,
   resolve,
+  deserializeModelConfig,
   serializeModelOptions,
   WORKFLOW_SERIALIZE,
   WORKFLOW_DESERIALIZE,
@@ -47,7 +48,10 @@ export class GoogleEmbeddingModel implements EmbeddingModelV4 {
     modelId: string;
     config: GoogleEmbeddingConfig;
   }) {
-    return new GoogleEmbeddingModel(options.modelId, options.config);
+    return new GoogleEmbeddingModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   get provider(): string {

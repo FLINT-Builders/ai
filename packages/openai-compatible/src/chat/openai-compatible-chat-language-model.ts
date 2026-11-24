@@ -21,6 +21,7 @@ import {
   isCustomReasoning,
   parseProviderOptions,
   postJsonToApi,
+  deserializeModelConfig,
   serializeModelOptions,
   StreamingToolCallTracker,
   WORKFLOW_SERIALIZE,
@@ -123,7 +124,7 @@ export class OpenAICompatibleChatLanguageModel implements LanguageModelV4 {
   }) {
     return new OpenAICompatibleChatLanguageModel(
       options.modelId,
-      options.config,
+      deserializeModelConfig(options.config),
     );
   }
 

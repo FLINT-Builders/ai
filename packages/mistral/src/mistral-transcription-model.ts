@@ -11,6 +11,7 @@ import {
   mediaTypeToExtension,
   parseProviderOptions,
   postFormDataToApi,
+  deserializeModelConfig,
   serializeModelOptions,
   WORKFLOW_DESERIALIZE,
   WORKFLOW_SERIALIZE,
@@ -47,7 +48,10 @@ export class MistralTranscriptionModel implements TranscriptionModelV4 {
     modelId: MistralTranscriptionModelId;
     config: MistralTranscriptionModelConfig;
   }) {
-    return new MistralTranscriptionModel(options.modelId, options.config);
+    return new MistralTranscriptionModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   get provider(): string {

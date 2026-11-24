@@ -12,6 +12,7 @@ import {
   parseProviderOptions,
   postFormDataToApi,
   postJsonToApi,
+  deserializeModelConfig,
   serializeModelOptions,
   WORKFLOW_DESERIALIZE,
   WORKFLOW_SERIALIZE,
@@ -47,7 +48,10 @@ export class OpenAIImageModel implements ImageModelV4 {
     modelId: OpenAIImageModelId;
     config: OpenAIImageModelConfig;
   }) {
-    return new OpenAIImageModel(options.modelId, options.config);
+    return new OpenAIImageModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   get maxImagesPerCall(): number {

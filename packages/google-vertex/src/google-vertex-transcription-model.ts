@@ -6,6 +6,7 @@ import {
   parseProviderOptions,
   postJsonToApi,
   resolve,
+  deserializeModelConfig,
   serializeModelOptions,
   WORKFLOW_DESERIALIZE,
   WORKFLOW_SERIALIZE,
@@ -73,7 +74,10 @@ export class GoogleVertexTranscriptionModel implements TranscriptionModelV4 {
     modelId: GoogleVertexTranscriptionModelId;
     config: GoogleVertexTranscriptionModelConfig;
   }) {
-    return new GoogleVertexTranscriptionModel(options.modelId, options.config);
+    return new GoogleVertexTranscriptionModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   get provider(): string {

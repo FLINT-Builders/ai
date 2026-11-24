@@ -7,6 +7,7 @@ import {
   parseProviderOptions,
   postJsonToApi,
   resolve,
+  deserializeModelConfig,
   serializeModelOptions,
   WORKFLOW_DESERIALIZE,
   WORKFLOW_SERIALIZE,
@@ -43,7 +44,10 @@ export class XaiSpeechModel implements SpeechModelV4 {
     modelId: '';
     config: XaiSpeechModelConfig;
   }) {
-    return new XaiSpeechModel(options.modelId, options.config);
+    return new XaiSpeechModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   get provider(): string {

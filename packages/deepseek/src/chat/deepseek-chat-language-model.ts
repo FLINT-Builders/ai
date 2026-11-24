@@ -21,6 +21,7 @@ import {
   mapReasoningToProviderEffort,
   parseProviderOptions,
   postJsonToApi,
+  deserializeModelConfig,
   serializeModelOptions,
   StreamingToolCallTracker,
   WORKFLOW_SERIALIZE,
@@ -203,7 +204,10 @@ export class DeepSeekChatLanguageModel implements LanguageModelV4 {
     modelId: DeepSeekChatModelId;
     config: DeepSeekChatConfig;
   }) {
-    return new DeepSeekChatLanguageModel(options.modelId, options.config);
+    return new DeepSeekChatLanguageModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   constructor(modelId: DeepSeekChatModelId, config: DeepSeekChatConfig) {

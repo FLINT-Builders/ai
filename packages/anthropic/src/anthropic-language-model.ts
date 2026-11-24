@@ -32,6 +32,7 @@ import {
   resolve,
   resolveProviderReference,
   secureJsonParse,
+  deserializeModelConfig,
   serializeModelOptions,
   WORKFLOW_SERIALIZE,
   WORKFLOW_DESERIALIZE,
@@ -235,7 +236,10 @@ export class AnthropicLanguageModel implements LanguageModelV4 {
     modelId: AnthropicModelId;
     config: AnthropicLanguageModelConfig;
   }) {
-    return new AnthropicLanguageModel(options.modelId, options.config);
+    return new AnthropicLanguageModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   constructor(modelId: AnthropicModelId, config: AnthropicLanguageModelConfig) {

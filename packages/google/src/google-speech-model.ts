@@ -6,6 +6,7 @@ import {
   parseProviderOptions,
   postJsonToApi,
   resolve,
+  deserializeModelConfig,
   serializeModelOptions,
   WORKFLOW_DESERIALIZE,
   WORKFLOW_SERIALIZE,
@@ -48,7 +49,10 @@ export class GoogleSpeechModel implements SpeechModelV4 {
     modelId: GoogleSpeechModelId;
     config: GoogleSpeechModelConfig;
   }) {
-    return new GoogleSpeechModel(options.modelId, options.config);
+    return new GoogleSpeechModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   get provider(): string {

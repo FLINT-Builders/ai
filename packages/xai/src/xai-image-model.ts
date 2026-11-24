@@ -8,6 +8,7 @@ import {
   getFromApi,
   parseProviderOptions,
   postJsonToApi,
+  deserializeModelConfig,
   serializeModelOptions,
   WORKFLOW_SERIALIZE,
   WORKFLOW_DESERIALIZE,
@@ -47,7 +48,10 @@ export class XaiImageModel implements ImageModelV4 {
     modelId: XaiImageModelId;
     config: XaiImageModelConfig;
   }) {
-    return new XaiImageModel(options.modelId, options.config);
+    return new XaiImageModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   constructor(

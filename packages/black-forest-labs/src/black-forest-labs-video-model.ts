@@ -18,6 +18,7 @@ import {
   parseProviderOptions,
   postJsonToApi,
   resolve,
+  deserializeModelConfig,
   serializeModelOptions,
   WORKFLOW_DESERIALIZE,
   WORKFLOW_SERIALIZE,
@@ -243,7 +244,10 @@ export class BlackForestLabsVideoModel implements VideoModelV4 {
     modelId: BlackForestLabsVideoModelId;
     config: BlackForestLabsVideoModelConfig;
   }) {
-    return new BlackForestLabsVideoModel(options.modelId, options.config);
+    return new BlackForestLabsVideoModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   constructor(

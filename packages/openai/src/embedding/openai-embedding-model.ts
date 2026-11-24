@@ -8,6 +8,7 @@ import {
   EXPERIMENTAL_EMBEDDING_MODEL_MAX_INPUT_BYTES_PER_CALL,
   parseProviderOptions,
   postJsonToApi,
+  deserializeModelConfig,
   serializeModelOptions,
   WORKFLOW_DESERIALIZE,
   WORKFLOW_SERIALIZE,
@@ -40,7 +41,10 @@ export class OpenAIEmbeddingModel implements EmbeddingModelV4 {
     modelId: OpenAIEmbeddingModelId;
     config: OpenAIConfig;
   }) {
-    return new OpenAIEmbeddingModel(options.modelId, options.config);
+    return new OpenAIEmbeddingModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   get provider(): string {

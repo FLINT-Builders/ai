@@ -8,6 +8,7 @@ import {
   postJsonToApi,
   resolve,
   parseProviderOptions,
+  deserializeModelConfig,
   serializeModelOptions,
   WORKFLOW_SERIALIZE,
   WORKFLOW_DESERIALIZE,
@@ -38,7 +39,10 @@ export class GoogleVertexEmbeddingModel implements EmbeddingModelV4 {
     modelId: string;
     config: GoogleVertexConfig;
   }) {
-    return new GoogleVertexEmbeddingModel(options.modelId, options.config);
+    return new GoogleVertexEmbeddingModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   get provider(): string {

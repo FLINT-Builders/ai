@@ -16,6 +16,7 @@ import {
   postFormDataToApi,
   postJsonToApi,
   safeParseJSON,
+  deserializeModelConfig,
   serializeModelOptions,
   toWebSocketUrl,
   waitForWebSocketBufferDrain,
@@ -69,7 +70,10 @@ export class CartesiaTranscriptionModel implements TranscriptionModelV4 {
     modelId: CartesiaTranscriptionModelId;
     config: CartesiaTranscriptionModelConfig;
   }) {
-    return new CartesiaTranscriptionModel(options.modelId, options.config);
+    return new CartesiaTranscriptionModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   constructor(

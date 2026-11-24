@@ -15,6 +15,7 @@ import {
   parseProviderOptions,
   postFormDataToApi,
   safeParseJSON,
+  deserializeModelConfig,
   serializeModelOptions,
   toWebSocketUrl,
   waitForWebSocketBufferDrain,
@@ -99,7 +100,10 @@ export class ElevenLabsTranscriptionModel implements TranscriptionModelV4 {
     modelId: ElevenLabsTranscriptionModelId;
     config: ElevenLabsTranscriptionModelConfig;
   }) {
-    return new ElevenLabsTranscriptionModel(options.modelId, options.config);
+    return new ElevenLabsTranscriptionModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   constructor(

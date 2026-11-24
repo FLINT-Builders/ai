@@ -8,6 +8,7 @@ import type {
 import {
   convertToBase64,
   generateId as defaultGenerateId,
+  deserializeModelConfig,
   serializeModelOptions,
   WORKFLOW_SERIALIZE,
   WORKFLOW_DESERIALIZE,
@@ -40,7 +41,10 @@ export class GoogleVertexImageModel implements ImageModelV4 {
     modelId: string;
     config: GoogleVertexImageModelConfig;
   }) {
-    return new GoogleVertexImageModel(options.modelId, options.config);
+    return new GoogleVertexImageModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   readonly maxImagesPerCall = 1;

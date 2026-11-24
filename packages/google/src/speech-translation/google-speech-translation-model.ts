@@ -13,6 +13,7 @@ import {
   convertToBase64,
   parseProviderOptions,
   safeParseJSON,
+  deserializeModelConfig,
   serializeModelOptions,
   WORKFLOW_DESERIALIZE,
   WORKFLOW_SERIALIZE,
@@ -99,7 +100,10 @@ export class GoogleSpeechTranslationModel implements SpeechTranslationModelV4 {
     modelId: GoogleSpeechTranslationModelId;
     config: GoogleSpeechTranslationModelConfig;
   }) {
-    return new GoogleSpeechTranslationModel(options.modelId, options.config);
+    return new GoogleSpeechTranslationModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   get provider(): string {

@@ -13,6 +13,7 @@ import {
   createJsonResponseHandler,
   parseProviderOptions,
   postJsonToApi,
+  deserializeModelConfig,
   serializeModelOptions,
   WORKFLOW_DESERIALIZE,
   WORKFLOW_SERIALIZE,
@@ -61,7 +62,10 @@ export class QuiverAIImageModel implements ImageModelV4 {
     modelId: QuiverAIImageModelId;
     config: QuiverAIImageModelConfig;
   }) {
-    return new QuiverAIImageModel(options.modelId, options.config);
+    return new QuiverAIImageModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   constructor(

@@ -9,6 +9,7 @@ import {
   createJsonResponseHandler,
   parseProviderOptions,
   postJsonToApi,
+  deserializeModelConfig,
   serializeModelOptions,
   WORKFLOW_SERIALIZE,
   WORKFLOW_DESERIALIZE,
@@ -49,7 +50,10 @@ export class AlibabaEmbeddingModel implements EmbeddingModelV4 {
     modelId: AlibabaEmbeddingModelId;
     config: AlibabaConfig;
   }) {
-    return new AlibabaEmbeddingModel(options.modelId, options.config);
+    return new AlibabaEmbeddingModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   constructor(modelId: AlibabaEmbeddingModelId, config: AlibabaConfig) {

@@ -5,6 +5,7 @@ import {
   createJsonResponseHandler,
   postJsonToApi,
   resolve,
+  deserializeModelConfig,
   serializeModelOptions,
   WORKFLOW_DESERIALIZE,
   WORKFLOW_SERIALIZE,
@@ -60,7 +61,10 @@ export class GoogleVertexCloudTTSSpeechModel implements SpeechModelV4 {
     modelId: GoogleVertexSpeechModelId;
     config: GoogleVertexCloudTTSSpeechModelConfig;
   }) {
-    return new GoogleVertexCloudTTSSpeechModel(options.modelId, options.config);
+    return new GoogleVertexCloudTTSSpeechModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   get provider(): string {

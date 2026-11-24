@@ -13,6 +13,7 @@ import {
   parseProviderOptions,
   postFormDataToApi,
   postJsonToApi,
+  deserializeModelConfig,
   serializeModelOptions,
   WORKFLOW_SERIALIZE,
   WORKFLOW_DESERIALIZE,
@@ -54,7 +55,10 @@ export class DeepInfraImageModel implements ImageModelV4 {
     modelId: DeepInfraImageModelId;
     config: DeepInfraImageModelConfig;
   }) {
-    return new DeepInfraImageModel(options.modelId, options.config);
+    return new DeepInfraImageModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   constructor(
