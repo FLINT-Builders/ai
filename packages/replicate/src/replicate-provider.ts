@@ -95,7 +95,7 @@ export function createReplicate(
     new ReplicateImageModel(modelId, {
       provider: 'replicate',
       baseURL,
-      headers: getHeaders(),
+      headers: getHeaders,
       fetch: options.fetch,
     });
 
