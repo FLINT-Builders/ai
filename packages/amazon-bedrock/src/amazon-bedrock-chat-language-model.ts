@@ -67,6 +67,7 @@ import {
   type AmazonBedrockUsage,
 } from './convert-amazon-bedrock-usage';
 import { convertToAmazonBedrockChatMessages } from './convert-to-amazon-bedrock-chat-messages';
+import { getAmazonBedrockSupportedUrls } from './amazon-bedrock-s3-url';
 import { mapAmazonBedrockFinishReason } from './map-amazon-bedrock-finish-reason';
 import { isMistralModel, normalizeToolCallId } from './normalize-tool-call-id';
 import type { AmazonBedrockReasoningMetadata } from './amazon-bedrock-reasoning-metadata';
@@ -77,6 +78,7 @@ type AmazonBedrockChatConfig = {
   fetch?: FetchFunction;
   generateId: () => string;
   modelFamily?: AmazonBedrockChatModelSettings['modelFamily'];
+  allowedS3Buckets?: readonly string[];
 };
 
 const anthropicProviderOptions = z.object({
@@ -547,6 +549,7 @@ export class AmazonBedrockChatLanguageModel implements LanguageModelV4 {
     const { system, messages } = await convertToAmazonBedrockChatMessages(
       filteredPrompt,
       isMistral,
+      this.config.allowedS3Buckets,
     );
 
     // Filter out reasoningConfig from amazonBedrock provider options to prevent sending it to Bedrock API
@@ -591,10 +594,9 @@ export class AmazonBedrockChatLanguageModel implements LanguageModelV4 {
     };
   }
 
-  readonly supportedUrls: Record<string, RegExp[]> = {
-    'image/*': [/^s3:\/\//],
-    'video/*': [/^s3:\/\//],
-  };
+  get supportedUrls(): Record<string, RegExp[]> {
+    return getAmazonBedrockSupportedUrls(this.config.allowedS3Buckets);
+  }
 
   private async getHeaders({
     headers,

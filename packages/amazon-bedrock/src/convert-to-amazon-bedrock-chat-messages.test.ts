@@ -1,3 +1,4 @@
+import { UnsupportedFunctionalityError } from '@ai-sdk/provider';
 import type { AmazonBedrockReasoningMetadata } from './amazon-bedrock-chat-language-model';
 import { convertToAmazonBedrockChatMessages } from './convert-to-amazon-bedrock-chat-messages';
 import { describe, it, expect } from 'vitest';
@@ -114,23 +115,27 @@ describe('user messages', () => {
     ]);
   });
 
-  it('should convert image parts with S3 URLs', async () => {
-    const { messages } = await convertToAmazonBedrockChatMessages([
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: 'Describe the image' },
-          {
-            type: 'file',
-            data: {
-              type: 'url' as const,
-              url: new URL('s3://my-test-bucket/path/to/image.png'),
+  it('should convert image parts with S3 URLs of allowed buckets', async () => {
+    const { messages } = await convertToAmazonBedrockChatMessages(
+      [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Describe the image' },
+            {
+              type: 'file',
+              data: {
+                type: 'url' as const,
+                url: new URL('s3://my-test-bucket/path/to/image.png'),
+              },
+              mediaType: 'image/png',
             },
-            mediaType: 'image/png',
-          },
-        ],
-      },
-    ]);
+          ],
+        },
+      ],
+      false,
+      ['my-test-bucket'],
+    );
 
     expect(messages).toEqual([
       {
@@ -188,23 +193,27 @@ describe('user messages', () => {
     ]);
   });
 
-  it('should convert video parts with S3 URLs', async () => {
-    const { messages } = await convertToAmazonBedrockChatMessages([
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: 'Describe the video' },
-          {
-            type: 'file',
-            data: {
-              type: 'url' as const,
-              url: new URL('s3://my-test-bucket/path/to/video.mp4'),
+  it('should convert video parts with S3 URLs of allowed buckets', async () => {
+    const { messages } = await convertToAmazonBedrockChatMessages(
+      [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Describe the video' },
+            {
+              type: 'file',
+              data: {
+                type: 'url' as const,
+                url: new URL('s3://my-test-bucket/path/to/video.mp4'),
+              },
+              mediaType: 'video/mp4',
             },
-            mediaType: 'video/mp4',
-          },
-        ],
-      },
-    ]);
+          ],
+        },
+      ],
+      false,
+      ['my-test-bucket'],
+    );
 
     expect(messages).toEqual([
       {
@@ -224,6 +233,88 @@ describe('user messages', () => {
         ],
       },
     ]);
+  });
+
+  it('should reject S3 URLs when no buckets are allowed', async () => {
+    await expect(
+      convertToAmazonBedrockChatMessages([
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'file',
+              data: {
+                type: 'url' as const,
+                url: new URL('s3://my-test-bucket/path/to/image.png'),
+              },
+              mediaType: 'image/png',
+            },
+          ],
+        },
+      ]),
+    ).rejects.toThrow(UnsupportedFunctionalityError);
+  });
+
+  it.each([
+    's3://other-bucket/path/to/image.png',
+    's3://My-Test-Bucket/path/to/image.png',
+    's3://user@my-test-bucket/path/to/image.png',
+    's3://my-test-bucket:443/path/to/image.png',
+    's3://my%2Dtest-bucket/path/to/image.png',
+    's3://my-test-bucket.other-bucket/path/to/image.png',
+    's3://my-test-bucket/path/to/image.png?versionId=1',
+    's3://my-test-bucket/path/to/image.png#fragment',
+    's3://my-test-bucket/',
+    's3://my-test-bucket',
+  ])('should reject S3 URL %s outside the allowed buckets', async url => {
+    await expect(
+      convertToAmazonBedrockChatMessages(
+        [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'file',
+                data: { type: 'url' as const, url: new URL(url) },
+                mediaType: 'image/png',
+              },
+            ],
+          },
+        ],
+        false,
+        ['my-test-bucket'],
+      ),
+    ).rejects.toThrow(UnsupportedFunctionalityError);
+  });
+
+  it('should reject S3 URLs in tool results when no buckets are allowed', async () => {
+    await expect(
+      convertToAmazonBedrockChatMessages([
+        {
+          role: 'tool',
+          content: [
+            {
+              type: 'tool-result',
+              toolCallId: 'call-1',
+              toolName: 'attachment',
+              output: {
+                type: 'content',
+                value: [
+                  {
+                    type: 'file',
+                    data: {
+                      type: 'url',
+                      url: new URL('s3://my-test-bucket/path/to/video.mp4'),
+                    },
+                    mediaType: 'video/mp4',
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ]),
+    ).rejects.toThrow(UnsupportedFunctionalityError);
   });
 
   it('should throw for unsupported video mime types', async () => {
@@ -2283,32 +2374,36 @@ describe('tool messages', () => {
     });
   });
 
-  it('should convert tool result images with S3 URLs', async () => {
-    const result = await convertToAmazonBedrockChatMessages([
-      {
-        role: 'tool',
-        content: [
-          {
-            type: 'tool-result',
-            toolCallId: 'call-123',
-            toolName: 'image-generator',
-            output: {
-              type: 'content',
-              value: [
-                {
-                  type: 'file',
-                  data: {
-                    type: 'url',
-                    url: new URL('s3://my-test-bucket/path/to/image.png'),
+  it('should convert tool result images with S3 URLs of allowed buckets', async () => {
+    const result = await convertToAmazonBedrockChatMessages(
+      [
+        {
+          role: 'tool',
+          content: [
+            {
+              type: 'tool-result',
+              toolCallId: 'call-123',
+              toolName: 'image-generator',
+              output: {
+                type: 'content',
+                value: [
+                  {
+                    type: 'file',
+                    data: {
+                      type: 'url',
+                      url: new URL('s3://my-test-bucket/path/to/image.png'),
+                    },
+                    mediaType: 'image/png',
                   },
-                  mediaType: 'image/png',
-                },
-              ],
+                ],
+              },
             },
-          },
-        ],
-      },
-    ]);
+          ],
+        },
+      ],
+      false,
+      ['my-test-bucket'],
+    );
 
     expect(result.messages[0]).toEqual({
       role: 'user',
@@ -2378,32 +2473,36 @@ describe('tool messages', () => {
     });
   });
 
-  it('should convert tool result videos with S3 URLs', async () => {
-    const result = await convertToAmazonBedrockChatMessages([
-      {
-        role: 'tool',
-        content: [
-          {
-            type: 'tool-result',
-            toolCallId: 'call-123',
-            toolName: 'video-analyzer',
-            output: {
-              type: 'content',
-              value: [
-                {
-                  type: 'file',
-                  data: {
-                    type: 'url',
-                    url: new URL('s3://my-test-bucket/path/to/video.mp4'),
+  it('should convert tool result videos with S3 URLs of allowed buckets', async () => {
+    const result = await convertToAmazonBedrockChatMessages(
+      [
+        {
+          role: 'tool',
+          content: [
+            {
+              type: 'tool-result',
+              toolCallId: 'call-123',
+              toolName: 'video-analyzer',
+              output: {
+                type: 'content',
+                value: [
+                  {
+                    type: 'file',
+                    data: {
+                      type: 'url',
+                      url: new URL('s3://my-test-bucket/path/to/video.mp4'),
+                    },
+                    mediaType: 'video/mp4',
                   },
-                  mediaType: 'video/mp4',
-                },
-              ],
+                ],
+              },
             },
-          },
-        ],
-      },
-    ]);
+          ],
+        },
+      ],
+      false,
+      ['my-test-bucket'],
+    );
 
     expect(result.messages[0]).toEqual({
       role: 'user',

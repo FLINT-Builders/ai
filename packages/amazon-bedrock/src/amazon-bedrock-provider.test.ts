@@ -620,6 +620,26 @@ describe('AmazonBedrockProvider', () => {
       expect(constructorCall[1].modelFamily).toBe('anthropic');
     });
 
+    it('should pass allowed S3 buckets to the chat model', () => {
+      const provider = createAmazonBedrock({
+        allowedS3Buckets: ['my-test-bucket'],
+      });
+
+      provider('amazon.nova-pro-v1:0');
+
+      const constructorCall = AmazonBedrockChatLanguageModelMock.mock.calls[0];
+      expect(constructorCall[1].allowedS3Buckets).toEqual(['my-test-bucket']);
+    });
+
+    it('should not allow S3 buckets by default', () => {
+      const provider = createAmazonBedrock();
+
+      provider('amazon.nova-pro-v1:0');
+
+      const constructorCall = AmazonBedrockChatLanguageModelMock.mock.calls[0];
+      expect(constructorCall[1].allowedS3Buckets).toBeUndefined();
+    });
+
     it('should pass embedding model settings to the model', () => {
       const provider = createAmazonBedrock();
       const modelId =
