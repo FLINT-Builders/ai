@@ -147,6 +147,46 @@ const modeEndpointMap: Record<KlingAIVideoMode, string> = {
 };
 
 /**
+ * Resolves the operation's endpoint path to one of the fixed endpoint paths.
+ * The operation may be persisted and replayed by the caller, so its value is
+ * never concatenated into the request URL directly.
+ */
+function resolveStatusEndpointPath(endpointPath: unknown): string {
+  const knownPath = Object.values(modeEndpointMap).find(
+    path => path === endpointPath,
+  );
+
+  if (knownPath == null) {
+    throw new AISDKError({
+      name: 'KLINGAI_VIDEO_GENERATION_ERROR',
+      message: 'Invalid KlingAI video operation: unknown endpointPath.',
+    });
+  }
+
+  return knownPath;
+}
+
+/**
+ * Dot segments are rejected because URL parsing would normalize them away even
+ * after percent-encoding, changing the requested path.
+ */
+function validateTaskId(taskId: unknown): string {
+  if (
+    typeof taskId !== 'string' ||
+    taskId === '' ||
+    taskId === '.' ||
+    taskId === '..'
+  ) {
+    throw new AISDKError({
+      name: 'KLINGAI_VIDEO_GENERATION_ERROR',
+      message: 'Invalid KlingAI video operation: invalid taskId.',
+    });
+  }
+
+  return taskId;
+}
+
+/**
  * Derives the KlingAI API `model_name` from the SDK model ID.
  * Strips the mode suffix and converts dots to hyphens.
  *
@@ -308,14 +348,17 @@ export class KlingAIVideoModel implements VideoModelV4 {
     options: Parameters<NonNullable<VideoModelV4['doStatus']>>[0],
   ): Promise<VideoModelV4OperationStatusResult> {
     const currentDate = this.config._internal?.currentDate?.() ?? new Date();
-    const { taskId, endpointPath } = options.operation as {
-      taskId: string;
-      endpointPath: string;
+    const operation = (options.operation ?? {}) as {
+      taskId?: unknown;
+      endpointPath?: unknown;
     };
+    const endpointPath = resolveStatusEndpointPath(operation.endpointPath);
+    const taskId = validateTaskId(operation.taskId);
 
     const { value: statusResponse, responseHeaders } = await getFromApi({
-      url: `${this.config.baseURL}${endpointPath}/${taskId}`,
+      url: `${this.config.baseURL}${endpointPath}/${encodeURIComponent(taskId)}`,
       validateUrl: true,
+      credentialedOrigin: this.config.baseURL,
       trustedOrigin: this.config.baseURL,
       headers: combineHeaders(
         await resolve(this.config.headers),
