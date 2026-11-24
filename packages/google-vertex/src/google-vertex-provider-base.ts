@@ -38,6 +38,7 @@ import { googleVertexTools } from './google-vertex-tools';
 import { GoogleVertexTranscriptionModel } from './google-vertex-transcription-model';
 import type { GoogleVertexTranscriptionModelId } from './google-vertex-transcription-model-options';
 import { GoogleVertexGeminiTranscriptionModel } from './gemini-transcription/google-vertex-gemini-transcription-model';
+import { getGoogleVertexAIPlatformHost } from './google-vertex-location';
 import { GoogleVertexVideoModel } from './google-vertex-video-model';
 import type { GoogleVertexVideoModelId } from './google-vertex-video-settings';
 import type { GoogleVertexSpeechModelId } from './google-vertex-speech-model-options';
@@ -245,28 +246,17 @@ export function createGoogleVertex(
     const region = loadGoogleVertexLocation();
     const project = loadGoogleVertexProject();
 
-    const getHost = () => {
-      if (region === 'global') {
-        return 'aiplatform.googleapis.com';
-      } else if (region === 'eu' || region === 'us') {
-        return `aiplatform.${region}.rep.googleapis.com`;
-      } else {
-        return `${region}-aiplatform.googleapis.com`;
-      }
-    };
-
     return (
       withoutTrailingSlash(options.baseURL) ??
-      `https://${getHost()}/v1beta1/projects/${project}/locations/${region}${
+      `https://${getGoogleVertexAIPlatformHost(region)}/v1beta1/projects/${project}/locations/${region}${
         endpoint ? '' : '/publishers/google'
       }`
     );
   };
 
-  const createConfig = (
+  const createRequestConfig = (
     name: string,
-    { endpoint = false }: { endpoint?: boolean } = {},
-  ): GoogleVertexConfig => {
+  ): Omit<GoogleVertexConfig, 'baseURL'> => {
     const getHeaders = async () => {
       const originalHeaders = await resolve(options.headers ?? {});
       return withUserAgentSuffix(
@@ -281,9 +271,16 @@ export function createGoogleVertex(
       fetch: apiKey
         ? createExpressModeFetch(apiKey, options.fetch)
         : options.fetch,
-      baseURL: loadBaseURL({ endpoint }),
     };
   };
+
+  const createConfig = (
+    name: string,
+    { endpoint = false }: { endpoint?: boolean } = {},
+  ): GoogleVertexConfig => ({
+    ...createRequestConfig(name),
+    baseURL: loadBaseURL({ endpoint }),
+  });
 
   const createChatModel = (modelId: GoogleVertexModelId) => {
     const endpoint = isEndpointModelId(modelId);
@@ -381,7 +378,7 @@ export function createGoogleVertex(
       );
     }
 
-    const config = createConfig('transcription');
+    const config = createRequestConfig('transcription');
 
     // Gemini transcription models (`gemini-3.5-transcribe[-live]`) use the
     // Vertex generateContent / Live API surfaces; everything else routes to

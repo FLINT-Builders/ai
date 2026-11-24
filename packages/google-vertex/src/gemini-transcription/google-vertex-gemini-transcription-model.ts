@@ -27,6 +27,7 @@ import {
 } from '@ai-sdk/provider-utils';
 import { z } from 'zod/v4';
 import { googleVertexFailedResponseHandler } from '../google-vertex-error';
+import { getGoogleVertexAIPlatformHost } from '../google-vertex-location';
 import {
   googleVertexGeminiTranscriptionModelOptions,
   type GoogleVertexGeminiTranscriptionModelId,
@@ -46,15 +47,6 @@ const defaultFinishGraceMs = 3000;
 /** Live transcription is only supported by `*-live` model variants. */
 function isLiveTranscriptionModelId(modelId: string): boolean {
   return modelId.includes('-live');
-}
-
-/** Regional Vertex hostname (mirrors the provider's base-URL host rules). */
-function vertexHost(location: string): string {
-  if (location === 'global') return 'aiplatform.googleapis.com';
-  if (location === 'eu' || location === 'us') {
-    return `aiplatform.${location}.rep.googleapis.com`;
-  }
-  return `${location}-aiplatform.googleapis.com`;
 }
 
 type GoogleLiveWordInfo = {
@@ -277,18 +269,18 @@ export class GoogleVertexGeminiTranscriptionModel implements TranscriptionModelV
 
     validateLiveInputAudioFormat(options.inputAudioFormat);
 
+    const { project, location } = this.config;
+    const url = new URL(
+      `wss://${getGoogleVertexAIPlatformHost(location)}/ws/${liveWebSocketPath}`,
+    );
+    const modelResource = `projects/${project}/locations/${location}/publishers/google/models/${this.modelId}`;
+
     // Vertex Live authenticates with the same OAuth Bearer header the HTTP
     // surface uses; a header-capable WebSocket implementation (e.g. `ws`) is
     // required to send it.
     const headers = combineHeaders(
       this.config.headers ? await resolve(this.config.headers) : undefined,
       options.headers,
-    );
-
-    const { project, location } = this.config;
-    const modelResource = `projects/${project}/locations/${location}/publishers/google/models/${this.modelId}`;
-    const url = new URL(
-      `wss://${vertexHost(location)}/ws/${liveWebSocketPath}`,
     );
 
     // NOTE: mirrors the Developer API model — Google's documented setup shape
