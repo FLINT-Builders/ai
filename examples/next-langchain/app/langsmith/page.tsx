@@ -11,7 +11,6 @@ const LOCAL_DEV_URL = 'http://localhost:2024';
 
 export default function LangSmithPage() {
   const [customUrl, setCustomUrl] = useState('');
-  const [apiKey, setApiKey] = useState('');
 
   const deploymentUrl = customUrl || LOCAL_DEV_URL;
 
@@ -19,9 +18,8 @@ export default function LangSmithPage() {
     () =>
       new LangSmithDeploymentTransport({
         url: deploymentUrl,
-        apiKey: apiKey || undefined,
       }),
-    [deploymentUrl, apiKey],
+    [deploymentUrl],
   );
 
   const { messages, sendMessage, status, error } = useChat<CustomDataMessage>({
@@ -53,8 +51,6 @@ export default function LangSmithPage() {
           deploymentUrl={deploymentUrl}
           customUrl={customUrl}
           setCustomUrl={setCustomUrl}
-          apiKey={apiKey}
-          setApiKey={setApiKey}
           localDevUrl={LOCAL_DEV_URL}
         />
       }

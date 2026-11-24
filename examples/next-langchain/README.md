@@ -126,7 +126,8 @@ Connect directly to a LangGraph app from the browser using `LangSmithDeploymentT
 
 - Uses `LangSmithDeploymentTransport` to create a transport for client-side communication
 - No backend route needed - talks directly to the LangGraph server
-- Works with both local development server and LangSmith deployments
+- Connects without an API key, so use it with the local development server or another server that does not need a LangSmith API key
+- The LangSmith API key is a server secret: call deployments that require it from a server route with `RemoteGraph` instead of the browser
 - Includes a local LangGraph server for development (see below)
 
 ## Deploy your own
@@ -276,11 +277,9 @@ function Chat() {
   const transport = useMemo(
     () =>
       new LangSmithDeploymentTransport({
-        // Local development server:
+        // Local development server (no API key required).
+        // The LangSmith API key is a server secret: never pass it here.
         url: 'http://localhost:2024',
-        // Or for a LangSmith deployment:
-        // url: 'https://your-deployment.langsmith.app',
-        // apiKey: process.env.NEXT_PUBLIC_LANGSMITH_API_KEY,
       }),
     [],
   );
