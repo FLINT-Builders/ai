@@ -11,6 +11,7 @@ import {
   isCustomReasoning,
   convertBase64ToUint8Array,
   detectMediaType,
+  downloadBlob,
   generateId,
   getTopLevelMediaType,
   isFullMediaType,
@@ -171,10 +172,10 @@ export class ProdiaLanguageModel implements LanguageModelV4 {
                 break;
               }
               case 'url': {
-                const fetchFn = this.config.fetch ?? globalThis.fetch;
-                const response = await fetchFn(part.data.url.toString());
-                const arrayBuffer = await response.arrayBuffer();
-                imageBytes = new Uint8Array(arrayBuffer);
+                const blob = await downloadBlob(part.data.url.toString(), {
+                  abortSignal: options.abortSignal,
+                });
+                imageBytes = new Uint8Array(await blob.arrayBuffer());
                 break;
               }
             }
