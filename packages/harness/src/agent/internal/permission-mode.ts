@@ -1,3 +1,4 @@
+import type { Tool } from '@ai-sdk/provider-utils';
 import type { ToolApprovalStatus } from 'ai';
 import type { HarnessV1PermissionMode } from '../../v1';
 import type { HarnessAgentToolApprovalConfiguration } from '../harness-agent-settings';
@@ -22,13 +23,31 @@ export type CustomToolApprovalDecision =
   | { readonly type: 'deny'; readonly reason?: string }
   | { readonly type: 'request' };
 
-export function resolveCustomToolApproval(input: {
+/**
+ * Resolves the approval decision for a host-executed tool call. The agent-level
+ * `toolApproval` entry takes precedence; without one, the tool's own
+ * `needsApproval` applies, as in AI SDK `resolveToolApproval`.
+ *
+ * `toolInput` must be the exact input the tool is executed with when the
+ * decision is `allow`.
+ */
+export async function resolveCustomToolApproval(input: {
   toolName: string;
+  toolCallId: string;
   toolApproval: HarnessAgentToolApprovalConfiguration | undefined;
-}): CustomToolApprovalDecision {
-  const status = normalizeToolApprovalStatus({
-    status: input.toolApproval?.[input.toolName],
-  });
+  tool: Tool | undefined;
+  toolInput: unknown;
+  isToolInputValid: boolean;
+}): Promise<CustomToolApprovalDecision> {
+  const configuredStatus =
+    input.toolApproval != null &&
+    Object.prototype.hasOwnProperty.call(input.toolApproval, input.toolName)
+      ? input.toolApproval[input.toolName]
+      : undefined;
+  const status =
+    configuredStatus != null
+      ? normalizeToolApprovalStatus({ status: configuredStatus })
+      : await resolveToolDefinedApprovalStatus(input);
 
   switch (status.type) {
     case 'not-applicable':
@@ -39,6 +58,31 @@ export function resolveCustomToolApproval(input: {
     case 'user-approval':
       return { type: 'request' };
   }
+}
+
+async function resolveToolDefinedApprovalStatus(input: {
+  toolCallId: string;
+  tool: Tool | undefined;
+  toolInput: unknown;
+  isToolInputValid: boolean;
+}): Promise<Exclude<ToolApprovalStatus, string | undefined>> {
+  const needsApproval = input.tool?.needsApproval;
+  if (needsApproval == null || needsApproval === false) {
+    return { type: 'not-applicable' };
+  }
+  // An input that failed schema validation cannot be judged by the tool's
+  // approval function, so it always needs a user decision.
+  if (typeof needsApproval !== 'function' || !input.isToolInputValid) {
+    return { type: 'user-approval' };
+  }
+  const approvalRequired = await needsApproval(input.toolInput, {
+    toolCallId: input.toolCallId,
+    messages: [],
+    context: undefined,
+  });
+  return approvalRequired
+    ? { type: 'user-approval' }
+    : { type: 'not-applicable' };
 }
 
 function normalizeToolApprovalStatus(input: {
