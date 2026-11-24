@@ -25,6 +25,8 @@ import {
 } from './fal-video-model-options';
 import type { FalVideoModelId } from './fal-video-settings';
 
+const falQueueBaseURL = 'https://queue.fal.run';
+
 interface FalVideoModelConfig extends FalConfig {
   _internal?: {
     currentDate?: () => Date;
@@ -87,15 +89,11 @@ export class FalVideoModel implements VideoModelV4 {
     options: Parameters<NonNullable<VideoModelV4['doStatus']>>[0],
   ): Promise<VideoModelV4OperationStatusResult> {
     const currentDate = this.config._internal?.currentDate?.() ?? new Date();
-    const { responseUrl, submitUrl } = options.operation as {
-      responseUrl: string;
-      submitUrl: string;
-    };
+    const { responseUrl } = options.operation as { responseUrl: string };
 
     try {
       const { value: response, responseHeaders } = await this.fetchStatus({
         responseUrl,
-        submitUrl,
         headers: options.headers,
         abortSignal: options.abortSignal,
       });
@@ -219,7 +217,7 @@ export class FalVideoModel implements VideoModelV4 {
     },
     body: Record<string, unknown>,
   ): Promise<{ responseUrl: string; submitUrl: string }> {
-    let queuePath = `https://queue.fal.run/fal-ai/${this.normalizedModelId}`;
+    let queuePath = `${falQueueBaseURL}/fal-ai/${this.normalizedModelId}`;
     if (options.webhookUrl) {
       queuePath += `?fal_webhook=${encodeURIComponent(options.webhookUrl)}`;
     }
@@ -252,12 +250,10 @@ export class FalVideoModel implements VideoModelV4 {
 
   private async fetchStatus({
     responseUrl,
-    submitUrl,
     headers,
     abortSignal,
   }: {
     responseUrl: string;
-    submitUrl: string;
     headers?: Record<string, string | undefined>;
     abortSignal?: AbortSignal;
   }): Promise<{
@@ -268,13 +264,19 @@ export class FalVideoModel implements VideoModelV4 {
       path: responseUrl,
       modelId: this.modelId,
     });
+    // The operation may be persisted and passed back by an untrusted caller,
+    // so trust is derived from the configured queue endpoint, never from it.
+    const queueUrl = this.config.url({
+      path: falQueueBaseURL,
+      modelId: this.modelId,
+    });
 
     return getFromApi({
       url: statusUrl,
       // statusUrl comes from the queue response body.
       validateUrl: true,
-      credentialedOrigin: submitUrl,
-      trustedOrigin: submitUrl,
+      credentialedOrigin: queueUrl,
+      trustedOrigin: queueUrl,
       headers: combineHeaders(this.config.headers?.(), headers),
       failedResponseHandler: async ({ response, url, requestBodyValues }) => {
         const body = await response.clone().json();
