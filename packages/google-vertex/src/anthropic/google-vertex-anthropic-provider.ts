@@ -13,6 +13,7 @@ import {
   anthropicTools,
   AnthropicLanguageModel,
 } from '@ai-sdk/anthropic/internal';
+import { getGoogleVertexAIPlatformHost } from '../google-vertex-location';
 import type { GoogleVertexAnthropicModelId } from './google-vertex-anthropic-options';
 
 type GoogleVertexAnthropicTools = Pick<
@@ -187,15 +188,10 @@ export function createGoogleVertexAnthropic(
       environmentVariableName: 'GOOGLE_VERTEX_PROJECT',
     });
 
-    const getHost = () => {
-      if (location === 'global') {
-        return 'aiplatform.googleapis.com';
-      } else if (location === 'eu' || location === 'us') {
-        return `aiplatform.${location}.rep.googleapis.com`;
-      } else {
-        return `${location}-aiplatform.googleapis.com`;
-      }
-    };
+    const getHost = () =>
+      location == null
+        ? `${location}-aiplatform.googleapis.com`
+        : getGoogleVertexAIPlatformHost(location);
 
     return (
       withoutTrailingSlash(options.baseURL) ??

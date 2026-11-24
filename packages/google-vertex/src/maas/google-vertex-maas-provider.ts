@@ -9,6 +9,7 @@ import {
   type FetchFunction,
   type Resolvable,
 } from '@ai-sdk/provider-utils';
+import { getGoogleVertexAIPlatformHost } from '../google-vertex-location';
 import type { GoogleVertexMaasModelId } from './google-vertex-maas-options';
 
 const maxOutputTokensByModel: Record<string, number | undefined> = {
@@ -88,21 +89,11 @@ export function createGoogleVertexMaas(
       description: 'Google Vertex project',
     });
 
-  const getHost = (location: string) => {
-    if (location === 'global') {
-      return 'aiplatform.googleapis.com';
-    } else if (location === 'eu' || location === 'us') {
-      return `aiplatform.${location}.rep.googleapis.com`;
-    } else {
-      return `${location}-aiplatform.googleapis.com`;
-    }
-  };
-
   const constructBaseURL = () => {
     const projectId = loadProject();
     const location = loadLocation() ?? 'global';
 
-    return `https://${getHost(location)}/v1/projects/${projectId}/locations/${location}/endpoints/openapi`;
+    return `https://${getGoogleVertexAIPlatformHost(location)}/v1/projects/${projectId}/locations/${location}/endpoints/openapi`;
   };
 
   const loadBaseURL = () =>
