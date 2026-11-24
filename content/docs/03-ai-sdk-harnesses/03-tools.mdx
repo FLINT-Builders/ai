@@ -247,6 +247,12 @@ const agent = new HarnessAgent({
 `toolApproval` accepts the same status values as AI SDK tool approval status
 objects: `not-applicable`, `approved`, `user-approval`, and `denied`.
 
+Tools without a `toolApproval` entry fall back to their own `needsApproval`
+setting, the same way `generateText` and `streamText` do. A tool with
+`needsApproval: true`, or a `needsApproval` function that returns `true` for
+the validated tool input, pauses for user approval. A `toolApproval` entry
+takes precedence over `needsApproval`.
+
 When approval is required, the stream pauses after a `tool-approval-request`.
 Continue the same session by sending a tool approval response message. In UI
 flows, `useChat` sends those messages for you when you add the approval result.

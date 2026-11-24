@@ -336,6 +336,8 @@ export type HarnessAgentSettings<
    * `not-applicable` and `approved` run the tool, `user-approval` pauses the
    * turn for a user decision, and `denied` immediately submits an
    * `execution-denied` result.
+   *
+   * Tools without an entry fall back to their own `needsApproval` setting.
    */
   readonly toolApproval?: HarnessAgentToolApprovalConfiguration;
 

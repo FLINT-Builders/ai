@@ -697,10 +697,14 @@ export function runPrompt<
       toolExecutions.set(rawToolCall.toolCallId, {
         toolCall: toolCall as TypedToolCall<TOOLS>,
       });
+      const boundToolCall = await bindHostToolCall({
+        event: rawToolCall,
+        tools: activeTools,
+      });
       const executionStartedAt = Date.now();
       const execution = await maybeExecuteHostTool({
         event: rawToolCall,
-        tools: activeTools,
+        boundToolCall,
         wrappedExecuteTool: lifecycle.executeTool,
         sandboxSession: input.sandboxSession,
         abortSignal: input.abortSignal,
@@ -1148,9 +1152,17 @@ export function runPrompt<
             await finishForHostInputPause({ completeCurrentStep: true });
             return;
           }
-          const customToolApprovalDecision = resolveCustomToolApproval({
+          const boundToolCall = await bindHostToolCall({
+            event: toolCall,
+            tools: activeTools,
+          });
+          const customToolApprovalDecision = await resolveCustomToolApproval({
             toolName: toolCall.toolName,
+            toolCallId: toolCall.toolCallId,
             toolApproval: input.toolApproval,
+            tool: boundToolCall.tool,
+            toolInput: boundToolCall.input,
+            isToolInputValid: boundToolCall.isInputValid,
           });
           if (customToolApprovalDecision.type === 'deny') {
             const approvalId = generateId();
@@ -1242,7 +1254,7 @@ export function runPrompt<
             await finishForHostInputPause({ completeCurrentStep: true });
             return;
           }
-          if (!isExecutableTool(activeTools[toolCall.toolName])) {
+          if (!isExecutableTool(boundToolCall.tool)) {
             recordPendingToolResult({ toolCall });
             if (
               expectedStepToolCallCount != null &&
@@ -1259,7 +1271,7 @@ export function runPrompt<
               const executionStartedAt = Date.now();
               const execution = await maybeExecuteHostTool({
                 event: toolCall,
-                tools: activeTools,
+                boundToolCall,
                 wrappedExecuteTool: lifecycle.executeTool,
                 sandboxSession: input.sandboxSession,
                 abortSignal: input.abortSignal,
@@ -1423,9 +1435,48 @@ function hasTool(input: { tools: ToolSet; toolName: string }): boolean {
   return Object.prototype.hasOwnProperty.call(input.tools, input.toolName);
 }
 
-async function maybeExecuteHostTool<TOOLS extends ToolSet>(input: {
-  event: { toolCallId: string; toolName: string; input: string };
-  tools: TOOLS;
+type BoundHostToolCall = {
+  readonly tool: ToolSet[string] | undefined;
+  readonly input: unknown;
+  readonly isInputValid: boolean;
+};
+
+/*
+ * Resolve the host tool and its input for one raw (unstripped) tool-call
+ * event. The approval decision and the execution must both use the returned
+ * `tool` and `input`, so that what was approved is what runs.
+ */
+async function bindHostToolCall(input: {
+  event: Extract<HarnessV1StreamPart, { type: 'tool-call' }>;
+  tools: ToolSet;
+}): Promise<BoundHostToolCall> {
+  const tool = hasTool({ tools: input.tools, toolName: input.event.toolName })
+    ? input.tools[input.event.toolName]
+    : undefined;
+  if (tool == null) {
+    const parsed = await safeParseJSON({ text: input.event.input });
+    return {
+      tool,
+      input: parsed.success ? parsed.value : input.event.input,
+      isInputValid: false,
+    };
+  }
+  const parsedToolCall = asToolCallTextStreamPart({
+    part: await validateToolCall({
+      event: input.event,
+      tools: { [input.event.toolName]: tool },
+    }),
+  });
+  return {
+    tool,
+    input: parsedToolCall.input,
+    isInputValid: parsedToolCall.invalid !== true,
+  };
+}
+
+async function maybeExecuteHostTool(input: {
+  event: { toolCallId: string; toolName: string };
+  boundToolCall: BoundHostToolCall;
   wrappedExecuteTool: TurnLifecycle<ToolSet, Context>['executeTool'];
   sandboxSession: SandboxSession;
   abortSignal: AbortSignal | undefined;
@@ -1437,12 +1488,9 @@ async function maybeExecuteHostTool<TOOLS extends ToolSet>(input: {
    */
   onPreliminaryResult: (output: unknown) => void;
 }): Promise<HostToolExecution> {
-  const tool = input.tools[input.event.toolName];
+  const { tool, input: args } = input.boundToolCall;
 
   if (!isExecutableTool(tool)) return { executed: false };
-
-  const parsed = await safeParseJSON({ text: input.event.input });
-  const args = parsed.success ? parsed.value : input.event.input;
 
   try {
     /*
