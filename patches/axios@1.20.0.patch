@@ -1,0 +1,362 @@
+diff --git a/dist/axios.js b/dist/axios.js
+index 96d843841298d5a5c1c5a48a8d28f8bd274e437b..1e88795fd7abae3174d17538edc5cbf7b0ea45ce 100644
+--- a/dist/axios.js
++++ b/dist/axios.js
+@@ -3688,6 +3688,49 @@
+       return String.fromCharCode(parseInt(hex, 16));
+     });
+   };
++  // FormData implementations define `getHeaders` on their own class, never on a
++  // built-in prototype, so a `getHeaders` reached through one can only come from
++  // prototype pollution and must not be allowed to add request headers.
++  var FORM_DATA_BUILTIN_PROTOTYPES = (function () {
++    var prototypes = [];
++    var addPrototype = function (ctor) {
++      if (typeof ctor === 'function' && ctor.prototype) prototypes.push(ctor.prototype);
++    };
++    [
++      'Object', 'Function', 'Array', 'String', 'Number', 'Boolean', 'Symbol', 'BigInt',
++      'Date', 'RegExp', 'Error', 'Map', 'Set', 'WeakMap', 'WeakSet', 'Promise',
++      'ArrayBuffer', 'SharedArrayBuffer', 'DataView', 'Int8Array', 'Uint8Array',
++      'Uint8ClampedArray', 'Int16Array', 'Uint16Array', 'Int32Array', 'Uint32Array',
++      'Float32Array', 'Float64Array', 'BigInt64Array', 'BigUint64Array', 'URL',
++      'URLSearchParams', 'Blob', 'File', 'ReadableStream', 'WritableStream', 'Buffer'
++    ].forEach(function (name) {
++      if (utils$1.hasOwnProp(utils$1.global, name)) addPrototype(utils$1.global[name]);
++    });
++    if (typeof Uint8Array === 'function') prototypes.push(Object.getPrototypeOf(Uint8Array.prototype));
++    var proc = utils$1.hasOwnProp(utils$1.global, 'process') ? utils$1.global.process : undefined;
++    if (proc && utils$1.hasOwnProp(proc, 'getBuiltinModule') && typeof proc.getBuiltinModule === 'function') {
++      try {
++        var stream = proc.getBuiltinModule('stream');
++        [
++          stream, stream.Readable, stream.Writable, stream.Duplex, stream.Transform,
++          stream.PassThrough, proc.getBuiltinModule('events')
++        ].forEach(addPrototype);
++      } catch (e) {
++        // stream/events are unavailable on this runtime
++      }
++    }
++    return prototypes;
++  })();
++
++  function getFormDataHeadersGetter(data) {
++    if (data === null || typeof data !== 'object' || utils$1.isArray(data)) return undefined;
++    for (var obj = data, depth = 0; obj != null && depth < 64; obj = Object.getPrototypeOf(obj), depth++) {
++      if (FORM_DATA_BUILTIN_PROTOTYPES.indexOf(obj) !== -1) return undefined;
++      if (utils$1.hasOwnProp(obj, 'getHeaders')) return obj.getHeaders;
++    }
++    return undefined;
++  }
++
+   function resolveConfig(config) {
+     var newConfig = mergeConfig({}, config);
+ 
+@@ -3719,7 +3762,7 @@
+       }
+     }
+     if (utils$1.isFormData(data)) {
+-      var getHeaders = utils$1.getSafeProp(data, 'getHeaders');
++      var getHeaders = getFormDataHeadersGetter(data);
+       if (platform.hasStandardBrowserEnv || platform.hasStandardBrowserWebWorkerEnv || utils$1.isReactNative(data)) {
+         headers.setContentType(undefined); // browser/web worker/RN handles it
+       } else if (utils$1.isFunction(getHeaders)) {
+diff --git a/dist/browser/axios.cjs b/dist/browser/axios.cjs
+index 9b10fc398b7eceedd525f367d6aafed33af3b761..bcd2bc5cbbce403bf93d7dd0f3f895bbf4960320 100644
+--- a/dist/browser/axios.cjs
++++ b/dist/browser/axios.cjs
+@@ -3556,6 +3556,49 @@ const encodeUTF8$1 = (str) =>
+     String.fromCharCode(parseInt(hex, 16))
+   );
+ 
++// FormData implementations define `getHeaders` on their own class, never on a
++// built-in prototype, so a `getHeaders` reached through one can only come from
++// prototype pollution and must not be allowed to add request headers.
++var FORM_DATA_BUILTIN_PROTOTYPES = (function () {
++  var prototypes = [];
++  var addPrototype = function (ctor) {
++    if (typeof ctor === 'function' && ctor.prototype) prototypes.push(ctor.prototype);
++  };
++  [
++    'Object', 'Function', 'Array', 'String', 'Number', 'Boolean', 'Symbol', 'BigInt',
++    'Date', 'RegExp', 'Error', 'Map', 'Set', 'WeakMap', 'WeakSet', 'Promise',
++    'ArrayBuffer', 'SharedArrayBuffer', 'DataView', 'Int8Array', 'Uint8Array',
++    'Uint8ClampedArray', 'Int16Array', 'Uint16Array', 'Int32Array', 'Uint32Array',
++    'Float32Array', 'Float64Array', 'BigInt64Array', 'BigUint64Array', 'URL',
++    'URLSearchParams', 'Blob', 'File', 'ReadableStream', 'WritableStream', 'Buffer'
++  ].forEach(function (name) {
++    if (utils$1.hasOwnProp(utils$1.global, name)) addPrototype(utils$1.global[name]);
++  });
++  if (typeof Uint8Array === 'function') prototypes.push(Object.getPrototypeOf(Uint8Array.prototype));
++  var proc = utils$1.hasOwnProp(utils$1.global, 'process') ? utils$1.global.process : undefined;
++  if (proc && utils$1.hasOwnProp(proc, 'getBuiltinModule') && typeof proc.getBuiltinModule === 'function') {
++    try {
++      var stream = proc.getBuiltinModule('stream');
++      [
++        stream, stream.Readable, stream.Writable, stream.Duplex, stream.Transform,
++        stream.PassThrough, proc.getBuiltinModule('events')
++      ].forEach(addPrototype);
++    } catch (e) {
++      // stream/events are unavailable on this runtime
++    }
++  }
++  return prototypes;
++})();
++
++function getFormDataHeadersGetter(data) {
++  if (data === null || typeof data !== 'object' || utils$1.isArray(data)) return undefined;
++  for (var obj = data, depth = 0; obj != null && depth < 64; obj = Object.getPrototypeOf(obj), depth++) {
++    if (FORM_DATA_BUILTIN_PROTOTYPES.indexOf(obj) !== -1) return undefined;
++    if (utils$1.hasOwnProp(obj, 'getHeaders')) return obj.getHeaders;
++  }
++  return undefined;
++}
++
+ function resolveConfig(config) {
+   const newConfig = mergeConfig({}, config);
+ 
+@@ -3597,7 +3640,7 @@ function resolveConfig(config) {
+   }
+ 
+   if (utils$1.isFormData(data)) {
+-    const getHeaders = utils$1.getSafeProp(data, 'getHeaders');
++    const getHeaders = getFormDataHeadersGetter(data);
+ 
+     if (
+       platform.hasStandardBrowserEnv ||
+diff --git a/dist/esm/axios.js b/dist/esm/axios.js
+index 1d7d2e039d1477d595eb70b23241009036d5e19a..19b79ad81f4b378ea58a7a89884bff07b3ad3966 100644
+--- a/dist/esm/axios.js
++++ b/dist/esm/axios.js
+@@ -3554,6 +3554,49 @@ const encodeUTF8$1 = (str) =>
+     String.fromCharCode(parseInt(hex, 16))
+   );
+ 
++// FormData implementations define `getHeaders` on their own class, never on a
++// built-in prototype, so a `getHeaders` reached through one can only come from
++// prototype pollution and must not be allowed to add request headers.
++var FORM_DATA_BUILTIN_PROTOTYPES = (function () {
++  var prototypes = [];
++  var addPrototype = function (ctor) {
++    if (typeof ctor === 'function' && ctor.prototype) prototypes.push(ctor.prototype);
++  };
++  [
++    'Object', 'Function', 'Array', 'String', 'Number', 'Boolean', 'Symbol', 'BigInt',
++    'Date', 'RegExp', 'Error', 'Map', 'Set', 'WeakMap', 'WeakSet', 'Promise',
++    'ArrayBuffer', 'SharedArrayBuffer', 'DataView', 'Int8Array', 'Uint8Array',
++    'Uint8ClampedArray', 'Int16Array', 'Uint16Array', 'Int32Array', 'Uint32Array',
++    'Float32Array', 'Float64Array', 'BigInt64Array', 'BigUint64Array', 'URL',
++    'URLSearchParams', 'Blob', 'File', 'ReadableStream', 'WritableStream', 'Buffer'
++  ].forEach(function (name) {
++    if (utils$1.hasOwnProp(utils$1.global, name)) addPrototype(utils$1.global[name]);
++  });
++  if (typeof Uint8Array === 'function') prototypes.push(Object.getPrototypeOf(Uint8Array.prototype));
++  var proc = utils$1.hasOwnProp(utils$1.global, 'process') ? utils$1.global.process : undefined;
++  if (proc && utils$1.hasOwnProp(proc, 'getBuiltinModule') && typeof proc.getBuiltinModule === 'function') {
++    try {
++      var stream = proc.getBuiltinModule('stream');
++      [
++        stream, stream.Readable, stream.Writable, stream.Duplex, stream.Transform,
++        stream.PassThrough, proc.getBuiltinModule('events')
++      ].forEach(addPrototype);
++    } catch (e) {
++      // stream/events are unavailable on this runtime
++    }
++  }
++  return prototypes;
++})();
++
++function getFormDataHeadersGetter(data) {
++  if (data === null || typeof data !== 'object' || utils$1.isArray(data)) return undefined;
++  for (var obj = data, depth = 0; obj != null && depth < 64; obj = Object.getPrototypeOf(obj), depth++) {
++    if (FORM_DATA_BUILTIN_PROTOTYPES.indexOf(obj) !== -1) return undefined;
++    if (utils$1.hasOwnProp(obj, 'getHeaders')) return obj.getHeaders;
++  }
++  return undefined;
++}
++
+ function resolveConfig(config) {
+   const newConfig = mergeConfig$1({}, config);
+ 
+@@ -3595,7 +3638,7 @@ function resolveConfig(config) {
+   }
+ 
+   if (utils$1.isFormData(data)) {
+-    const getHeaders = utils$1.getSafeProp(data, 'getHeaders');
++    const getHeaders = getFormDataHeadersGetter(data);
+ 
+     if (
+       platform.hasStandardBrowserEnv ||
+diff --git a/dist/node/axios.cjs b/dist/node/axios.cjs
+index 5ed2c86d31510a4784cc9c0e591ff4ba18afe2bf..cabce90070ca97d14e6780a01b86e38c3301588c 100644
+--- a/dist/node/axios.cjs
++++ b/dist/node/axios.cjs
+@@ -4424,8 +4424,8 @@ var httpAdapter = isHttpAdapterSupported && function httpAdapter(config) {
+         boundary: userBoundary && userBoundary[1] || undefined
+       });
+       // support for https://www.npmjs.com/package/form-data api
+-    } else if (utils$1.isFormData(data) && utils$1.isFunction(data.getHeaders) && data.getHeaders !== Object.prototype.getHeaders) {
+-      setFormDataHeaders(headers, data.getHeaders(), own('formDataHeaderPolicy'));
++    } else if (utils$1.isFormData(data) && utils$1.isFunction(getFormDataHeadersGetter(data))) {
++      setFormDataHeaders(headers, getFormDataHeadersGetter(data).call(data), own('formDataHeaderPolicy'));
+       if (!headers.hasContentLength()) {
+         try {
+           const knownLength = await util.promisify(data.getLength).call(data);
+@@ -5128,6 +5128,49 @@ function mergeConfig(config1, config2) {
+  * @returns {string} UTF-8 bytes as a Latin-1 string
+  */
+ const encodeUTF8$1 = str => encodeURIComponent(str).replace(/%([0-9A-F]{2})/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
++// FormData implementations define `getHeaders` on their own class, never on a
++// built-in prototype, so a `getHeaders` reached through one can only come from
++// prototype pollution and must not be allowed to add request headers.
++var FORM_DATA_BUILTIN_PROTOTYPES = (function () {
++  var prototypes = [];
++  var addPrototype = function (ctor) {
++    if (typeof ctor === 'function' && ctor.prototype) prototypes.push(ctor.prototype);
++  };
++  [
++    'Object', 'Function', 'Array', 'String', 'Number', 'Boolean', 'Symbol', 'BigInt',
++    'Date', 'RegExp', 'Error', 'Map', 'Set', 'WeakMap', 'WeakSet', 'Promise',
++    'ArrayBuffer', 'SharedArrayBuffer', 'DataView', 'Int8Array', 'Uint8Array',
++    'Uint8ClampedArray', 'Int16Array', 'Uint16Array', 'Int32Array', 'Uint32Array',
++    'Float32Array', 'Float64Array', 'BigInt64Array', 'BigUint64Array', 'URL',
++    'URLSearchParams', 'Blob', 'File', 'ReadableStream', 'WritableStream', 'Buffer'
++  ].forEach(function (name) {
++    if (utils$1.hasOwnProp(utils$1.global, name)) addPrototype(utils$1.global[name]);
++  });
++  if (typeof Uint8Array === 'function') prototypes.push(Object.getPrototypeOf(Uint8Array.prototype));
++  var proc = utils$1.hasOwnProp(utils$1.global, 'process') ? utils$1.global.process : undefined;
++  if (proc && utils$1.hasOwnProp(proc, 'getBuiltinModule') && typeof proc.getBuiltinModule === 'function') {
++    try {
++      var stream = proc.getBuiltinModule('stream');
++      [
++        stream, stream.Readable, stream.Writable, stream.Duplex, stream.Transform,
++        stream.PassThrough, proc.getBuiltinModule('events')
++      ].forEach(addPrototype);
++    } catch (e) {
++      // stream/events are unavailable on this runtime
++    }
++  }
++  return prototypes;
++})();
++
++function getFormDataHeadersGetter(data) {
++  if (data === null || typeof data !== 'object' || utils$1.isArray(data)) return undefined;
++  for (var obj = data, depth = 0; obj != null && depth < 64; obj = Object.getPrototypeOf(obj), depth++) {
++    if (FORM_DATA_BUILTIN_PROTOTYPES.indexOf(obj) !== -1) return undefined;
++    if (utils$1.hasOwnProp(obj, 'getHeaders')) return obj.getHeaders;
++  }
++  return undefined;
++}
++
+ function resolveConfig(config) {
+   const newConfig = mergeConfig({}, config);
+ 
+@@ -5157,7 +5200,7 @@ function resolveConfig(config) {
+     }
+   }
+   if (utils$1.isFormData(data)) {
+-    const getHeaders = utils$1.getSafeProp(data, 'getHeaders');
++    const getHeaders = getFormDataHeadersGetter(data);
+     if (platform.hasStandardBrowserEnv || platform.hasStandardBrowserWebWorkerEnv || utils$1.isReactNative(data)) {
+       headers.setContentType(undefined); // browser/web worker/RN handles it
+     } else if (utils$1.isFunction(getHeaders)) {
+diff --git a/lib/adapters/http.js b/lib/adapters/http.js
+index 90eedbcf4e5007957a8883bcc797a8e221181f98..040491625719058599d76ce9ce7433b2406592da 100755
+--- a/lib/adapters/http.js
++++ b/lib/adapters/http.js
+@@ -20,6 +20,7 @@ import fromDataURI from '../helpers/fromDataURI.js';
+ import stream from 'stream';
+ import AxiosHeaders from '../core/AxiosHeaders.js';
+ import setFormDataHeaders from '../core/setFormDataHeaders.js';
++import { getFormDataHeadersGetter } from '../helpers/resolveConfig.js';
+ import AxiosTransformStream from '../helpers/AxiosTransformStream.js';
+ import { EventEmitter } from 'events';
+ import formDataToStream from '../helpers/formDataToStream.js';
+@@ -816,10 +817,13 @@ export default isHttpAdapterSupported &&
+         // support for https://www.npmjs.com/package/form-data api
+       } else if (
+         utils.isFormData(data) &&
+-        utils.isFunction(data.getHeaders) &&
+-        data.getHeaders !== Object.prototype.getHeaders
++        utils.isFunction(getFormDataHeadersGetter(data))
+       ) {
+-        setFormDataHeaders(headers, data.getHeaders(), own('formDataHeaderPolicy'));
++        setFormDataHeaders(
++          headers,
++          getFormDataHeadersGetter(data).call(data),
++          own('formDataHeaderPolicy')
++        );
+ 
+         if (!headers.hasContentLength()) {
+           try {
+diff --git a/lib/helpers/resolveConfig.js b/lib/helpers/resolveConfig.js
+index 7ad0c2d1d5059742e620ebdfccd15b7cfde18705..d6e4f59c3825e2f08171cc317def4704059734ff 100644
+--- a/lib/helpers/resolveConfig.js
++++ b/lib/helpers/resolveConfig.js
+@@ -22,6 +22,49 @@ const encodeUTF8 = (str) =>
+     String.fromCharCode(parseInt(hex, 16))
+   );
+ 
++// FormData implementations define `getHeaders` on their own class, never on a
++// built-in prototype, so a `getHeaders` reached through one can only come from
++// prototype pollution and must not be allowed to add request headers.
++var FORM_DATA_BUILTIN_PROTOTYPES = (function () {
++  var prototypes = [];
++  var addPrototype = function (ctor) {
++    if (typeof ctor === 'function' && ctor.prototype) prototypes.push(ctor.prototype);
++  };
++  [
++    'Object', 'Function', 'Array', 'String', 'Number', 'Boolean', 'Symbol', 'BigInt',
++    'Date', 'RegExp', 'Error', 'Map', 'Set', 'WeakMap', 'WeakSet', 'Promise',
++    'ArrayBuffer', 'SharedArrayBuffer', 'DataView', 'Int8Array', 'Uint8Array',
++    'Uint8ClampedArray', 'Int16Array', 'Uint16Array', 'Int32Array', 'Uint32Array',
++    'Float32Array', 'Float64Array', 'BigInt64Array', 'BigUint64Array', 'URL',
++    'URLSearchParams', 'Blob', 'File', 'ReadableStream', 'WritableStream', 'Buffer'
++  ].forEach(function (name) {
++    if (utils.hasOwnProp(utils.global, name)) addPrototype(utils.global[name]);
++  });
++  if (typeof Uint8Array === 'function') prototypes.push(Object.getPrototypeOf(Uint8Array.prototype));
++  var proc = utils.hasOwnProp(utils.global, 'process') ? utils.global.process : undefined;
++  if (proc && utils.hasOwnProp(proc, 'getBuiltinModule') && typeof proc.getBuiltinModule === 'function') {
++    try {
++      var stream = proc.getBuiltinModule('stream');
++      [
++        stream, stream.Readable, stream.Writable, stream.Duplex, stream.Transform,
++        stream.PassThrough, proc.getBuiltinModule('events')
++      ].forEach(addPrototype);
++    } catch (e) {
++      // stream/events are unavailable on this runtime
++    }
++  }
++  return prototypes;
++})();
++
++function getFormDataHeadersGetter(data) {
++  if (data === null || typeof data !== 'object' || utils.isArray(data)) return undefined;
++  for (var obj = data, depth = 0; obj != null && depth < 64; obj = Object.getPrototypeOf(obj), depth++) {
++    if (FORM_DATA_BUILTIN_PROTOTYPES.indexOf(obj) !== -1) return undefined;
++    if (utils.hasOwnProp(obj, 'getHeaders')) return obj.getHeaders;
++  }
++  return undefined;
++}
++
+ function resolveConfig(config) {
+   const newConfig = mergeConfig({}, config);
+ 
+@@ -63,7 +106,7 @@ function resolveConfig(config) {
+   }
+ 
+   if (utils.isFormData(data)) {
+-    const getHeaders = utils.getSafeProp(data, 'getHeaders');
++    const getHeaders = getFormDataHeadersGetter(data);
+ 
+     if (
+       platform.hasStandardBrowserEnv ||
+@@ -104,4 +147,6 @@ function resolveConfig(config) {
+   return newConfig;
+ }
+ 
++export { getFormDataHeadersGetter };
++
+ export default resolveConfig;
