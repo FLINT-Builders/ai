@@ -275,6 +275,7 @@ export function runPrompt<
       sessionWorkDir: input.sessionWorkDir,
     });
     const toolCallsByToolCallId = new Map<string, ToolCallTextStreamPart>();
+    const hostToolCallsByToolCallId = new Map<string, ToolCallTextStreamPart>();
     const rawToolCallsByToolCallId = new Map<
       string,
       Extract<HarnessV1StreamPart, { type: 'tool-call' }>
@@ -640,26 +641,44 @@ export function runPrompt<
       approval: HarnessV1PendingToolApproval,
       continuation: ToolApprovalResponse,
     ): Promise<'continued' | 'awaiting-tool-result'> => {
-      const rawToolCall =
-        rawToolCallsByToolCallId.get(approval.toolCallId) ??
-        ({
-          type: 'tool-call',
-          toolCallId: approval.toolCallId,
-          toolName: approval.toolName,
-          input: approval.input,
-          providerExecuted: approval.providerExecuted,
-          nativeName: approval.nativeName,
-        } satisfies Extract<HarnessV1StreamPart, { type: 'tool-call' }>);
-      const parsedInput = await safeParseJSON({ text: rawToolCall.input });
-      const toolCall: ToolCallTextStreamPart = {
+      const approvedToolCall = {
         type: 'tool-call',
-        toolCallId: rawToolCall.toolCallId,
-        toolName: rawToolCall.toolName,
-        input: parsedInput.success ? parsedInput.value : rawToolCall.input,
-        ...(rawToolCall.providerExecuted !== undefined
-          ? { providerExecuted: rawToolCall.providerExecuted }
-          : {}),
-      };
+        toolCallId: approval.toolCallId,
+        toolName: approval.toolName,
+        input: approval.input,
+        providerExecuted: approval.providerExecuted,
+        nativeName: approval.nativeName,
+      } satisfies Extract<HarnessV1StreamPart, { type: 'tool-call' }>;
+      /*
+       * A custom approval authorizes exactly the stored input, so it is
+       * validated and executed from the approval record; a bridge event that
+       * replays the same tool call id must not substitute its own input.
+       */
+      const rawToolCall =
+        approval.kind === 'custom'
+          ? approvedToolCall
+          : (rawToolCallsByToolCallId.get(approval.toolCallId) ??
+            approvedToolCall);
+      let toolCall: ToolCallTextStreamPart;
+      if (approval.kind === 'custom') {
+        toolCall = asToolCallTextStreamPart({
+          part: await validateToolCall<TOOLS>({
+            event: approvedToolCall,
+            tools: input.tools,
+          }),
+        });
+      } else {
+        const parsedInput = await safeParseJSON({ text: rawToolCall.input });
+        toolCall = {
+          type: 'tool-call',
+          toolCallId: rawToolCall.toolCallId,
+          toolName: rawToolCall.toolName,
+          input: parsedInput.success ? parsedInput.value : rawToolCall.input,
+          ...(rawToolCall.providerExecuted !== undefined
+            ? { providerExecuted: rawToolCall.providerExecuted }
+            : {}),
+        };
+      }
 
       enqueueApprovalResponse(approval, continuation, toolCall);
       onToolApprovalSettled(approval.approvalId);
@@ -699,8 +718,9 @@ export function runPrompt<
       });
       const executionStartedAt = Date.now();
       const execution = await maybeExecuteHostTool({
-        event: rawToolCall,
-        tools: activeTools,
+        toolCall,
+        tools: input.tools,
+        activeTools,
         wrappedExecuteTool: lifecycle.executeTool,
         sandboxSession: input.sandboxSession,
         abortSignal: input.abortSignal,
@@ -973,6 +993,21 @@ export function runPrompt<
           rawToolCallsByToolCallId.set(displayValue.toolCallId, displayValue);
           toolCallsByToolCallId.set(displayValue.toolCallId, parsedToolCall);
           result.enqueue(parsed);
+          // Host tools run on the unstripped input, so they need its own
+          // schema parse whenever stripping changed the display input.
+          if (value.type === 'tool-call' && !value.providerExecuted) {
+            hostToolCallsByToolCallId.set(
+              value.toolCallId,
+              value.input === displayValue.input
+                ? parsedToolCall
+                : asToolCallTextStreamPart({
+                    part: await validateToolCall<TOOLS>({
+                      event: value,
+                      tools: input.tools,
+                    }),
+                  }),
+            );
+          }
         }
 
         if (value.type === 'text-delta') {
@@ -1102,7 +1137,10 @@ export function runPrompt<
         if (value.type === 'tool-call' && !value.providerExecuted) {
           const toolCall = value;
           const parsedToolCall = toolCallsByToolCallId.get(toolCall.toolCallId);
-          if (parsedToolCall == null) {
+          const hostToolCall = hostToolCallsByToolCallId.get(
+            toolCall.toolCallId,
+          );
+          if (parsedToolCall == null || hostToolCall == null) {
             throw new Error(
               `Harness '${input.harness.harnessId}' could not find parsed tool call '${toolCall.toolCallId}' for custom tool approval.`,
             );
@@ -1147,6 +1185,20 @@ export function runPrompt<
             }
             await finishForHostInputPause({ completeCurrentStep: true });
             return;
+          }
+          if (hostToolCall.invalid === true) {
+            const outcome = await submitInvalidToolInput({
+              toolCall: hostToolCall,
+              submitToolResult,
+            });
+            const execution = toolExecutions.get(toolCall.toolCallId);
+            if (execution != null) {
+              execution.toolOutput = toToolOutput({
+                toolCall: parsedToolCall,
+                outcome,
+              });
+            }
+            continue;
           }
           const customToolApprovalDecision = resolveCustomToolApproval({
             toolName: toolCall.toolName,
@@ -1258,8 +1310,9 @@ export function runPrompt<
             (async () => {
               const executionStartedAt = Date.now();
               const execution = await maybeExecuteHostTool({
-                event: toolCall,
-                tools: activeTools,
+                toolCall: hostToolCall,
+                tools: input.tools,
+                activeTools,
                 wrappedExecuteTool: lifecycle.executeTool,
                 sandboxSession: input.sandboxSession,
                 abortSignal: input.abortSignal,
@@ -1423,9 +1476,26 @@ function hasTool(input: { tools: ToolSet; toolName: string }): boolean {
   return Object.prototype.hasOwnProperty.call(input.tools, input.toolName);
 }
 
+async function submitInvalidToolInput(input: {
+  toolCall: ToolCallTextStreamPart;
+  submitToolResult: HarnessV1PromptControl['submitToolResult'];
+}): Promise<HostToolOutcome> {
+  await input.submitToolResult({
+    toolCallId: input.toolCall.toolCallId,
+    output: { error: getErrorMessage(input.toolCall.error) },
+    isError: true,
+  });
+  return { ok: false, error: input.toolCall.error };
+}
+
 async function maybeExecuteHostTool<TOOLS extends ToolSet>(input: {
-  event: { toolCallId: string; toolName: string; input: string };
+  /**
+   * The call as returned by `validateToolCall` against `tools`. Its `input` is
+   * the schema output and is what `execute` receives.
+   */
+  toolCall: ToolCallTextStreamPart;
   tools: TOOLS;
+  activeTools: ToolSet;
   wrappedExecuteTool: TurnLifecycle<ToolSet, Context>['executeTool'];
   sandboxSession: SandboxSession;
   abortSignal: AbortSignal | undefined;
@@ -1437,12 +1507,26 @@ async function maybeExecuteHostTool<TOOLS extends ToolSet>(input: {
    */
   onPreliminaryResult: (output: unknown) => void;
 }): Promise<HostToolExecution> {
-  const tool = input.tools[input.event.toolName];
+  const { toolCallId, toolName } = input.toolCall;
+  if (
+    !hasTool({ tools: input.activeTools, toolName }) ||
+    !hasTool({ tools: input.tools, toolName })
+  ) {
+    return { executed: false };
+  }
+  const tool = input.tools[toolName];
 
   if (!isExecutableTool(tool)) return { executed: false };
 
-  const parsed = await safeParseJSON({ text: input.event.input });
-  const args = parsed.success ? parsed.value : input.event.input;
+  if (input.toolCall.invalid === true) {
+    return {
+      executed: true,
+      outcome: await submitInvalidToolInput({
+        toolCall: input.toolCall,
+        submitToolResult: input.submitToolResult,
+      }),
+    };
+  }
 
   try {
     /*
@@ -1456,14 +1540,14 @@ async function maybeExecuteHostTool<TOOLS extends ToolSet>(input: {
      * stream alone, matching how the AI SDK treats `onPreliminaryToolResult`.
      */
     const output = await input.wrappedExecuteTool({
-      toolCallId: input.event.toolCallId,
+      toolCallId,
       execute: async () => {
         let output: unknown;
         const stream = executeTool({
           tool,
-          input: args as never,
+          input: input.toolCall.input as never,
           options: {
-            toolCallId: input.event.toolCallId,
+            toolCallId,
             messages: [],
             abortSignal: input.abortSignal,
             context: undefined as never,
@@ -1482,13 +1566,13 @@ async function maybeExecuteHostTool<TOOLS extends ToolSet>(input: {
     });
 
     await input.submitToolResult({
-      toolCallId: input.event.toolCallId,
+      toolCallId,
       output,
     });
     return { executed: true, outcome: { ok: true, output } };
   } catch (err) {
     await input.submitToolResult({
-      toolCallId: input.event.toolCallId,
+      toolCallId,
       output: { error: String(err) },
       isError: true,
     });
