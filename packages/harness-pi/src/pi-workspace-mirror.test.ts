@@ -57,6 +57,7 @@ function makeSandbox(
   options?: {
     rejectFindSymlinkFlags?: boolean;
     withoutTar?: boolean;
+    missingOnRead?: boolean;
   },
 ): {
   sandbox: Experimental_SandboxSession;
@@ -65,8 +66,9 @@ function makeSandbox(
 } {
   const listOutput = [
     ...remoteListing.directories.map(d => `d\t${d}`),
-    ...Object.keys(remoteListing.files).map(
-      f => `f\t${f}\t${path.posix.join(sandboxWorkDir, f)}`,
+    ...Object.entries(remoteListing.files).map(
+      ([f, content]) =>
+        `f\t${f}\t${Buffer.byteLength(content)}\t${path.posix.join(sandboxWorkDir, f)}`,
     ),
   ]
     .sort()
@@ -89,11 +91,34 @@ function makeSandbox(
     return gzipSync(makeTarArchive(entries)).toString('base64');
   }
 
+  // Mirror the sandbox-side bounded per-file read: `head -c <limit> <path>`,
+  // base64-encoded on stdout, or exit 3 when the file is missing.
+  function fileReadOutput(command: string) {
+    const [, limit, quotedPath] =
+      /head -c (\d+) '((?:[^']|'\\'')*)'/.exec(command) ?? [];
+    const requestedPath = (quotedPath as string).split("'\\''").join("'");
+    const content =
+      remoteListing.files[path.posix.relative(sandboxWorkDir, requestedPath)];
+    if (content == null || options?.missingOnRead) {
+      return { exitCode: 3, stdout: '', stderr: '' };
+    }
+    return {
+      exitCode: 0,
+      stdout: Buffer.from(content)
+        .subarray(0, Number(limit))
+        .toString('base64'),
+      stderr: '',
+    };
+  }
+
   const run = vi.fn(async ({ command }: { command: string }) => {
     if (command.startsWith('tar ')) {
       return options?.withoutTar
         ? { exitCode: 127, stdout: '', stderr: 'tar: not found\n' }
         : { exitCode: 0, stdout: archiveOutput(command), stderr: '' };
+    }
+    if (command.startsWith('[ -f ')) {
+      return fileReadOutput(command);
     }
     return options?.rejectFindSymlinkFlags && command.includes('find -L')
       ? {
@@ -563,8 +588,8 @@ describe('syncHostWorkspaceFromSandbox', () => {
     );
   });
 
-  it('falls back to per-file reads when the sandbox cannot archive', async () => {
-    const { sandbox, readBinaryFile } = makeSandbox(
+  it('falls back to bounded per-file reads when the sandbox cannot archive', async () => {
+    const { sandbox, run, readBinaryFile } = makeSandbox(
       {
         directories: ['.pi'],
         files: { '.pi/SYSTEM.md': '# Prompt' },
@@ -578,7 +603,12 @@ describe('syncHostWorkspaceFromSandbox', () => {
       hostWorkDir,
     });
 
-    expect(readBinaryFile).toHaveBeenCalledTimes(1);
+    expect(readBinaryFile).not.toHaveBeenCalled();
+    // Listing, the failed archive, then one bounded read for the file.
+    expect(run).toHaveBeenCalledTimes(3);
+    expect((run.mock.calls[2]![0] as { command: string }).command).toContain(
+      `head -c ${'# Prompt'.length + 1} `,
+    );
     expect(readFileSync(path.join(hostWorkDir, '.pi/SYSTEM.md'), 'utf8')).toBe(
       '# Prompt',
     );
@@ -587,11 +617,8 @@ describe('syncHostWorkspaceFromSandbox', () => {
   it('throws when a file disappears and neither transfer path can read it', async () => {
     const { sandbox } = makeSandbox(
       { directories: [], files: { 'AGENTS.md': '# Gone' } },
-      { withoutTar: true },
+      { withoutTar: true, missingOnRead: true },
     );
-    (
-      sandbox.readBinaryFile as unknown as ReturnType<typeof vi.fn>
-    ).mockResolvedValue(null);
 
     await expect(
       syncHostWorkspaceFromSandbox({ sandbox, sandboxWorkDir, hostWorkDir }),
