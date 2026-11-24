@@ -499,6 +499,7 @@ return createUIMessageStreamResponse({
   - `sendStart`: Whether to emit the outer `start` chunk. Defaults to `true`.
   - `sendFinish`: Whether to emit the outer `finish` chunk. Defaults to `true`.
   - `onStart`, `onToken`, `onText`, `onFinal`, `onFinish`, `onError`, and `onAbort`: Optional stream lifecycle callbacks.
+  - `onError`: Called with the full error when the stream or a tool call fails. Error messages are not forwarded to the client by default: `error` and `tool-output-error` chunks contain `'An error occurred.'` unless `onError` returns a string to use instead.
 
 **Returns:** `ReadableStream<UIMessageChunk>`
 

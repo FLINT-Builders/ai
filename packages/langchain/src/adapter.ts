@@ -25,6 +25,8 @@ import {
 import type { LangGraphEventState } from './types';
 import type { StreamCallbacks } from './stream-callbacks';
 
+const DEFAULT_ERROR_TEXT = 'An error occurred.';
+
 /**
  * Options for converting a LangChain stream to an AI SDK UIMessageStream.
  */
@@ -502,9 +504,22 @@ export function toUIMessageStream<TState = unknown>(
   const iterator = getAsyncIterator();
 
   /**
-   * Create a wrapper around the controller to intercept text chunks for callbacks
+   * Error text from LangChain/LangGraph (exception messages, tool error
+   * content) can contain server-side details, so it is only sent to the client
+   * when `onError` explicitly returns it.
    */
-  const createCallbackController = (
+  const getClientErrorText = async (error: Error): Promise<string> => {
+    const errorText = await options?.onError?.(error);
+    return typeof errorText === 'string' ? errorText : DEFAULT_ERROR_TEXT;
+  };
+
+  /**
+   * Chunks produced while processing a stream value. They are buffered so that
+   * error chunks can be masked asynchronously without reordering the stream.
+   */
+  const pendingChunks: UIMessageChunk[] = [];
+
+  const createBufferingController = (
     originalController: ReadableStreamDefaultController<UIMessageChunk>,
   ): ReadableStreamDefaultController<UIMessageChunk> => {
     return {
@@ -514,26 +529,42 @@ export function toUIMessageStream<TState = unknown>(
       close: () => originalController.close(),
       error: (e?: unknown) => originalController.error(e),
       enqueue: (chunk: UIMessageChunk) => {
-        /**
-         * Intercept text-delta chunks for callbacks
-         */
-        if (chunk.type === 'text-delta' && chunk.delta) {
-          if (options?.onFinal) {
-            textChunks.push(chunk.delta);
-          }
-          options?.onToken?.(chunk.delta);
-          options?.onText?.(chunk.delta);
-        }
-        originalController.enqueue(chunk);
+        pendingChunks.push(chunk);
       },
     };
+  };
+
+  const flushPendingChunks = async (
+    controller: ReadableStreamDefaultController<UIMessageChunk>,
+  ) => {
+    for (const chunk of pendingChunks.splice(0)) {
+      /**
+       * Intercept text-delta chunks for callbacks
+       */
+      if (chunk.type === 'text-delta' && chunk.delta) {
+        if (options?.onFinal) {
+          textChunks.push(chunk.delta);
+        }
+        options?.onToken?.(chunk.delta);
+        options?.onText?.(chunk.delta);
+      }
+
+      if (chunk.type === 'tool-output-error' || chunk.type === 'error') {
+        controller.enqueue({
+          ...chunk,
+          errorText: await getClientErrorText(new Error(chunk.errorText)),
+        });
+      } else {
+        controller.enqueue(chunk);
+      }
+    }
   };
 
   return new ReadableStream<UIMessageChunk>({
     async start(controller) {
       await options?.onStart?.();
 
-      const wrappedController = createCallbackController(controller);
+      const wrappedController = createBufferingController(controller);
       if (sendStart) {
         controller.enqueue({ type: 'start' });
       }
@@ -590,6 +621,8 @@ export function toUIMessageStream<TState = unknown>(
               wrappedController,
             );
           }
+
+          await flushPendingChunks(controller);
         }
 
         /**
@@ -657,21 +690,21 @@ export function toUIMessageStream<TState = unknown>(
         await options?.onFinal?.(textChunks.join(''));
         await options?.onFinish?.(lastValuesData);
       } catch (error) {
+        await flushPendingChunks(controller);
+
         const errorObj =
           error instanceof Error ? error : new Error(String(error));
 
         await options?.onFinal?.(textChunks.join(''));
 
+        let errorText = DEFAULT_ERROR_TEXT;
         if (isAbortError(error)) {
           await options?.onAbort?.();
         } else {
-          await options?.onError?.(errorObj);
+          errorText = await getClientErrorText(errorObj);
         }
 
-        controller.enqueue({
-          type: 'error',
-          errorText: errorObj.message,
-        });
+        controller.enqueue({ type: 'error', errorText });
       } finally {
         controller.close();
       }
