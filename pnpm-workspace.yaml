@@ -12,6 +12,9 @@ overrides:
   tar: 7.5.19
   '@workflow/world-local@4>undici': 7.29.0
   '@workflow/world-vercel@4>undici': 7.29.0
+  '@modelcontextprotocol/sdk@<1.32.0': 1.32.2
+  '@modelcontextprotocol/client@<2.3.0': 2.3.1
+  'pi-mcp-adapter@2>@modelcontextprotocol/client': 2.3.1
 
 minimumReleaseAge: 4320 # 3 days
 
