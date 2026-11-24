@@ -4,6 +4,7 @@ import {
   convertUint8ArrayToBase64,
   detectMediaType,
 } from '@ai-sdk/provider-utils';
+import { endsWithSvgRoot, startsWithSvgRoot } from './quiverai-svg-sniff';
 
 const MAX_REFERENCE_BASE64_LENGTH = 16_777_216;
 const MAX_REFERENCE_BYTES = 12_582_912;
@@ -151,11 +152,5 @@ function isSvg(data: Uint8Array): boolean {
   }
 
   const normalized = text.replace(/^\uFEFF/, '').trim();
-  return (
-    /^(?:<\?xml[\s\S]*?\?>\s*)?(?:<!--[\s\S]*?-->\s*)?(?:<!DOCTYPE[\s\S]*?>\s*)?<svg[\s>]/i.test(
-      normalized,
-    ) &&
-    (/<\/svg>\s*$/i.test(normalized) ||
-      /<svg(?:\s[^>]*)?\/>\s*$/is.test(normalized))
-  );
+  return startsWithSvgRoot(normalized) && endsWithSvgRoot(normalized);
 }

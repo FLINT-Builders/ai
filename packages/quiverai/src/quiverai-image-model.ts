@@ -27,6 +27,7 @@ import {
   validateQuiverAIImageUrl,
   validateQuiverAIReferenceBase64,
 } from './prepare-quiverai-image-reference';
+import { findDoctypeEnd, startsWithSvgRoot } from './quiverai-svg-sniff';
 import type {
   QuiverAIImageModelId,
   QuiverAIOperation,
@@ -258,9 +259,7 @@ function isSvg(data: Uint8Array): boolean {
     .decode(data.subarray(0, 4096))
     .trimStart();
 
-  return /^(?:(?:<\?xml[\s\S]*?\?>|<!--[\s\S]*?-->|<!DOCTYPE[\s\S]*?>)\s*)*<svg(?:\s|>)/i.test(
-    head,
-  );
+  return startsWithSvgRoot(head);
 }
 
 function buildRequestBody({
@@ -916,34 +915,6 @@ function hasValidXmlReferences(value: string) {
     position = value.indexOf('&', end + 1);
   }
   return true;
-}
-
-function findDoctypeEnd(value: string, position: number) {
-  let subsetDepth = 0;
-  let quote: '"' | "'" | undefined;
-
-  while (position < value.length) {
-    const character = value[position];
-    if (quote != null) {
-      if (character === quote) {
-        quote = undefined;
-      }
-    } else if (character === '"' || character === "'") {
-      quote = character;
-    } else if (character === '[') {
-      subsetDepth += 1;
-    } else if (character === ']') {
-      if (subsetDepth === 0) {
-        return -1;
-      }
-      subsetDepth -= 1;
-    } else if (character === '>' && subsetDepth === 0) {
-      return position + 1;
-    }
-    position += 1;
-  }
-
-  return -1;
 }
 
 function collectWarnings({
