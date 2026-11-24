@@ -1,0 +1,230 @@
+[
+  {
+    "name": "literal-json",
+    "script": "node /tmp/harness-codex-audit-shim/harness-tool.mjs weather '{\"city\":\"Paris\"}'",
+    "executed": "{\"city\":\"Paris\"}",
+    "unexpanded": null,
+    "commands": [
+      {
+        "shell": "/bin/bash",
+        "flag": "-lc",
+        "command": "/bin/bash -lc \"node /tmp/harness-codex-audit-shim/harness-tool.mjs weather '{\\\"city\\\":\\\"Paris\\\"}'\""
+      },
+      {
+        "shell": "/bin/bash",
+        "flag": "-c",
+        "command": "/bin/bash -c \"node /tmp/harness-codex-audit-shim/harness-tool.mjs weather '{\\\"city\\\":\\\"Paris\\\"}'\""
+      },
+      {
+        "shell": "/bin/sh",
+        "flag": "-lc",
+        "command": "/bin/sh -lc \"node /tmp/harness-codex-audit-shim/harness-tool.mjs weather '{\\\"city\\\":\\\"Paris\\\"}'\""
+      },
+      {
+        "shell": "/bin/sh",
+        "flag": "-c",
+        "command": "/bin/sh -c \"node /tmp/harness-codex-audit-shim/harness-tool.mjs weather '{\\\"city\\\":\\\"Paris\\\"}'\""
+      },
+      {
+        "shell": "/bin/zsh",
+        "flag": "-lc",
+        "command": "/bin/zsh -lc \"node /tmp/harness-codex-audit-shim/harness-tool.mjs weather '{\\\"city\\\":\\\"Paris\\\"}'\""
+      },
+      {
+        "shell": "/bin/zsh",
+        "flag": "-c",
+        "command": "/bin/zsh -c \"node /tmp/harness-codex-audit-shim/harness-tool.mjs weather '{\\\"city\\\":\\\"Paris\\\"}'\""
+      }
+    ]
+  },
+  {
+    "name": "command-substitution",
+    "script": "node /tmp/harness-codex-audit-shim/harness-tool.mjs weather \"{\\\"city\\\":\\\"$(printf expanded)\\\"}\"",
+    "executed": "{\"city\":\"expanded\"}",
+    "unexpanded": "$(printf expanded)",
+    "commands": [
+      {
+        "shell": "/bin/bash",
+        "flag": "-lc",
+        "command": "/bin/bash -lc \"node /tmp/harness-codex-audit-shim/harness-tool.mjs weather \\\"{\\\\\\\"city\\\\\\\":\\\\\\\"\"'$(printf expanded)'\"\\\\\\\"}\\\"\""
+      },
+      {
+        "shell": "/bin/bash",
+        "flag": "-c",
+        "command": "/bin/bash -c \"node /tmp/harness-codex-audit-shim/harness-tool.mjs weather \\\"{\\\\\\\"city\\\\\\\":\\\\\\\"\"'$(printf expanded)'\"\\\\\\\"}\\\"\""
+      },
+      {
+        "shell": "/bin/sh",
+        "flag": "-lc",
+        "command": "/bin/sh -lc \"node /tmp/harness-codex-audit-shim/harness-tool.mjs weather \\\"{\\\\\\\"city\\\\\\\":\\\\\\\"\"'$(printf expanded)'\"\\\\\\\"}\\\"\""
+      },
+      {
+        "shell": "/bin/sh",
+        "flag": "-c",
+        "command": "/bin/sh -c \"node /tmp/harness-codex-audit-shim/harness-tool.mjs weather \\\"{\\\\\\\"city\\\\\\\":\\\\\\\"\"'$(printf expanded)'\"\\\\\\\"}\\\"\""
+      },
+      {
+        "shell": "/bin/zsh",
+        "flag": "-lc",
+        "command": "/bin/zsh -lc \"node /tmp/harness-codex-audit-shim/harness-tool.mjs weather \\\"{\\\\\\\"city\\\\\\\":\\\\\\\"\"'$(printf expanded)'\"\\\\\\\"}\\\"\""
+      },
+      {
+        "shell": "/bin/zsh",
+        "flag": "-c",
+        "command": "/bin/zsh -c \"node /tmp/harness-codex-audit-shim/harness-tool.mjs weather \\\"{\\\\\\\"city\\\\\\\":\\\\\\\"\"'$(printf expanded)'\"\\\\\\\"}\\\"\""
+      }
+    ]
+  },
+  {
+    "name": "backticks",
+    "script": "node /tmp/harness-codex-audit-shim/harness-tool.mjs weather \"{\\\"city\\\":\\\"`printf expanded`\\\"}\"",
+    "executed": "{\"city\":\"expanded\"}",
+    "unexpanded": "`printf expanded`",
+    "commands": [
+      {
+        "shell": "/bin/bash",
+        "flag": "-lc",
+        "command": "/bin/bash -lc \"node /tmp/harness-codex-audit-shim/harness-tool.mjs weather \\\"{\\\\\\\"city\\\\\\\":\\\\\\\"\"'`printf expanded`'\"\\\\\\\"}\\\"\""
+      },
+      {
+        "shell": "/bin/bash",
+        "flag": "-c",
+        "command": "/bin/bash -c \"node /tmp/harness-codex-audit-shim/harness-tool.mjs weather \\\"{\\\\\\\"city\\\\\\\":\\\\\\\"\"'`printf expanded`'\"\\\\\\\"}\\\"\""
+      },
+      {
+        "shell": "/bin/sh",
+        "flag": "-lc",
+        "command": "/bin/sh -lc \"node /tmp/harness-codex-audit-shim/harness-tool.mjs weather \\\"{\\\\\\\"city\\\\\\\":\\\\\\\"\"'`printf expanded`'\"\\\\\\\"}\\\"\""
+      },
+      {
+        "shell": "/bin/sh",
+        "flag": "-c",
+        "command": "/bin/sh -c \"node /tmp/harness-codex-audit-shim/harness-tool.mjs weather \\\"{\\\\\\\"city\\\\\\\":\\\\\\\"\"'`printf expanded`'\"\\\\\\\"}\\\"\""
+      },
+      {
+        "shell": "/bin/zsh",
+        "flag": "-lc",
+        "command": "/bin/zsh -lc \"node /tmp/harness-codex-audit-shim/harness-tool.mjs weather \\\"{\\\\\\\"city\\\\\\\":\\\\\\\"\"'`printf expanded`'\"\\\\\\\"}\\\"\""
+      },
+      {
+        "shell": "/bin/zsh",
+        "flag": "-c",
+        "command": "/bin/zsh -c \"node /tmp/harness-codex-audit-shim/harness-tool.mjs weather \\\"{\\\\\\\"city\\\\\\\":\\\\\\\"\"'`printf expanded`'\"\\\\\\\"}\\\"\""
+      }
+    ]
+  },
+  {
+    "name": "parameter-expansion",
+    "script": "node /tmp/harness-codex-audit-shim/harness-tool.mjs weather \"{\\\"city\\\":\\\"${MARKER_VAR}\\\"}\"",
+    "executed": "{\"city\":\"expanded-var\"}",
+    "unexpanded": "${MARKER_VAR}",
+    "commands": [
+      {
+        "shell": "/bin/bash",
+        "flag": "-lc",
+        "command": "/bin/bash -lc \"node /tmp/harness-codex-audit-shim/harness-tool.mjs weather \\\"{\\\\\\\"city\\\\\\\":\\\\\\\"\"'${MARKER_VAR}'\"\\\\\\\"}\\\"\""
+      },
+      {
+        "shell": "/bin/bash",
+        "flag": "-c",
+        "command": "/bin/bash -c \"node /tmp/harness-codex-audit-shim/harness-tool.mjs weather \\\"{\\\\\\\"city\\\\\\\":\\\\\\\"\"'${MARKER_VAR}'\"\\\\\\\"}\\\"\""
+      },
+      {
+        "shell": "/bin/sh",
+        "flag": "-lc",
+        "command": "/bin/sh -lc \"node /tmp/harness-codex-audit-shim/harness-tool.mjs weather \\\"{\\\\\\\"city\\\\\\\":\\\\\\\"\"'${MARKER_VAR}'\"\\\\\\\"}\\\"\""
+      },
+      {
+        "shell": "/bin/sh",
+        "flag": "-c",
+        "command": "/bin/sh -c \"node /tmp/harness-codex-audit-shim/harness-tool.mjs weather \\\"{\\\\\\\"city\\\\\\\":\\\\\\\"\"'${MARKER_VAR}'\"\\\\\\\"}\\\"\""
+      },
+      {
+        "shell": "/bin/zsh",
+        "flag": "-lc",
+        "command": "/bin/zsh -lc \"node /tmp/harness-codex-audit-shim/harness-tool.mjs weather \\\"{\\\\\\\"city\\\\\\\":\\\\\\\"\"'${MARKER_VAR}'\"\\\\\\\"}\\\"\""
+      },
+      {
+        "shell": "/bin/zsh",
+        "flag": "-c",
+        "command": "/bin/zsh -c \"node /tmp/harness-codex-audit-shim/harness-tool.mjs weather \\\"{\\\\\\\"city\\\\\\\":\\\\\\\"\"'${MARKER_VAR}'\"\\\\\\\"}\\\"\""
+      }
+    ]
+  },
+  {
+    "name": "arithmetic-expansion",
+    "script": "node /tmp/harness-codex-audit-shim/harness-tool.mjs weather \"{\\\"city\\\":\\\"$((1+1))\\\"}\"",
+    "executed": "{\"city\":\"2\"}",
+    "unexpanded": "$((1+1))",
+    "commands": [
+      {
+        "shell": "/bin/bash",
+        "flag": "-lc",
+        "command": "/bin/bash -lc \"node /tmp/harness-codex-audit-shim/harness-tool.mjs weather \\\"{\\\\\\\"city\\\\\\\":\\\\\\\"\"'$((1+1))'\"\\\\\\\"}\\\"\""
+      },
+      {
+        "shell": "/bin/bash",
+        "flag": "-c",
+        "command": "/bin/bash -c \"node /tmp/harness-codex-audit-shim/harness-tool.mjs weather \\\"{\\\\\\\"city\\\\\\\":\\\\\\\"\"'$((1+1))'\"\\\\\\\"}\\\"\""
+      },
+      {
+        "shell": "/bin/sh",
+        "flag": "-lc",
+        "command": "/bin/sh -lc \"node /tmp/harness-codex-audit-shim/harness-tool.mjs weather \\\"{\\\\\\\"city\\\\\\\":\\\\\\\"\"'$((1+1))'\"\\\\\\\"}\\\"\""
+      },
+      {
+        "shell": "/bin/sh",
+        "flag": "-c",
+        "command": "/bin/sh -c \"node /tmp/harness-codex-audit-shim/harness-tool.mjs weather \\\"{\\\\\\\"city\\\\\\\":\\\\\\\"\"'$((1+1))'\"\\\\\\\"}\\\"\""
+      },
+      {
+        "shell": "/bin/zsh",
+        "flag": "-lc",
+        "command": "/bin/zsh -lc \"node /tmp/harness-codex-audit-shim/harness-tool.mjs weather \\\"{\\\\\\\"city\\\\\\\":\\\\\\\"\"'$((1+1))'\"\\\\\\\"}\\\"\""
+      },
+      {
+        "shell": "/bin/zsh",
+        "flag": "-c",
+        "command": "/bin/zsh -c \"node /tmp/harness-codex-audit-shim/harness-tool.mjs weather \\\"{\\\\\\\"city\\\\\\\":\\\\\\\"\"'$((1+1))'\"\\\\\\\"}\\\"\""
+      }
+    ]
+  },
+  {
+    "name": "compound-and-command-substitution",
+    "script": "node /tmp/harness-codex-audit-shim/harness-tool.mjs weather '{\"city\":\"Paris\"}' && node /tmp/harness-codex-audit-shim/harness-tool.mjs weather \"{\\\"city\\\":\\\"$(printf expanded)\\\"}\"",
+    "executed": "{\"city\":\"Paris\"}{\"city\":\"expanded\"}",
+    "unexpanded": "$(printf expanded)",
+    "commands": [
+      {
+        "shell": "/bin/bash",
+        "flag": "-lc",
+        "command": "/bin/bash -lc \"node /tmp/harness-codex-audit-shim/harness-tool.mjs weather '{\\\"city\\\":\\\"Paris\\\"}' && node /tmp/harness-codex-audit-shim/harness-tool.mjs weather \\\"{\\\\\\\"city\\\\\\\":\\\\\\\"\"'$(printf expanded)'\"\\\\\\\"}\\\"\""
+      },
+      {
+        "shell": "/bin/bash",
+        "flag": "-c",
+        "command": "/bin/bash -c \"node /tmp/harness-codex-audit-shim/harness-tool.mjs weather '{\\\"city\\\":\\\"Paris\\\"}' && node /tmp/harness-codex-audit-shim/harness-tool.mjs weather \\\"{\\\\\\\"city\\\\\\\":\\\\\\\"\"'$(printf expanded)'\"\\\\\\\"}\\\"\""
+      },
+      {
+        "shell": "/bin/sh",
+        "flag": "-lc",
+        "command": "/bin/sh -lc \"node /tmp/harness-codex-audit-shim/harness-tool.mjs weather '{\\\"city\\\":\\\"Paris\\\"}' && node /tmp/harness-codex-audit-shim/harness-tool.mjs weather \\\"{\\\\\\\"city\\\\\\\":\\\\\\\"\"'$(printf expanded)'\"\\\\\\\"}\\\"\""
+      },
+      {
+        "shell": "/bin/sh",
+        "flag": "-c",
+        "command": "/bin/sh -c \"node /tmp/harness-codex-audit-shim/harness-tool.mjs weather '{\\\"city\\\":\\\"Paris\\\"}' && node /tmp/harness-codex-audit-shim/harness-tool.mjs weather \\\"{\\\\\\\"city\\\\\\\":\\\\\\\"\"'$(printf expanded)'\"\\\\\\\"}\\\"\""
+      },
+      {
+        "shell": "/bin/zsh",
+        "flag": "-lc",
+        "command": "/bin/zsh -lc \"node /tmp/harness-codex-audit-shim/harness-tool.mjs weather '{\\\"city\\\":\\\"Paris\\\"}' && node /tmp/harness-codex-audit-shim/harness-tool.mjs weather \\\"{\\\\\\\"city\\\\\\\":\\\\\\\"\"'$(printf expanded)'\"\\\\\\\"}\\\"\""
+      },
+      {
+        "shell": "/bin/zsh",
+        "flag": "-c",
+        "command": "/bin/zsh -c \"node /tmp/harness-codex-audit-shim/harness-tool.mjs weather '{\\\"city\\\":\\\"Paris\\\"}' && node /tmp/harness-codex-audit-shim/harness-tool.mjs weather \\\"{\\\\\\\"city\\\\\\\":\\\\\\\"\"'$(printf expanded)'\"\\\\\\\"}\\\"\""
+      }
+    ]
+  }
+]
