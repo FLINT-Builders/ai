@@ -102,7 +102,7 @@ describe('prompt attachment download cancellation', () => {
     abortController.abort(new DOMException('cancelled', 'AbortError'));
 
     expect(await settleWithin(operation)).toBe('rejected');
-    expect(download.getSignal()).toBe(abortController.signal);
+    expect(download.getSignal()?.reason).toBe(abortController.signal.reason);
     expect(download.getSignal()?.aborted).toBe(true);
     expect(doGenerate).not.toHaveBeenCalled();
   });
@@ -127,7 +127,7 @@ describe('prompt attachment download cancellation', () => {
     abortController.abort(new DOMException('cancelled', 'AbortError'));
 
     expect(await settleWithin(operation)).not.toBe('pending');
-    expect(download.getSignal()).toBe(abortController.signal);
+    expect(download.getSignal()?.reason).toBe(abortController.signal.reason);
     expect(download.getSignal()?.aborted).toBe(true);
     expect(doStream).not.toHaveBeenCalled();
   });

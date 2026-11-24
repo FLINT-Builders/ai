@@ -13,8 +13,10 @@ import { VERSION } from '../../version';
  * Download a file from a URL.
  *
  * @param url - The URL to download from.
- * @param maxBytes - Maximum allowed download size in bytes. Defaults to 100 MiB.
+ * @param maxBytes - Maximum allowed download size in bytes. Defaults to 2 GiB.
  * @param abortSignal - An optional abort signal to cancel the download.
+ * @param onChunk - Optional callback invoked with each body chunk before it is
+ * buffered. Throwing from it aborts the download.
  * @returns The downloaded data and media type.
  *
  * @throws DownloadError if the download fails or exceeds maxBytes.
@@ -23,10 +25,12 @@ export const download = async ({
   url,
   maxBytes,
   abortSignal,
+  onChunk,
 }: {
   url: URL;
   maxBytes?: number;
   abortSignal?: AbortSignal;
+  onChunk?: (chunk: Uint8Array) => void;
 }) => {
   const urlText = url.toString();
   try {
@@ -57,6 +61,7 @@ export const download = async ({
       response,
       url: urlText,
       maxBytes: maxBytes ?? DEFAULT_MAX_DOWNLOAD_SIZE,
+      onChunk,
     });
 
     return {

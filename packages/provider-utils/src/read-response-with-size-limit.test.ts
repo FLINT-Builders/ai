@@ -121,6 +121,49 @@ describe('readResponseWithSizeLimit', () => {
     });
   });
 
+  it('should report each chunk to onChunk', async () => {
+    const { response } = createMockResponse({
+      body: new Uint8Array(10),
+    });
+    const chunkSizes: number[] = [];
+
+    await readResponseWithSizeLimit({
+      response,
+      url: 'http://example.com/file',
+      maxBytes: 100,
+      onChunk: chunk => {
+        chunkSizes.push(chunk.byteLength);
+      },
+    });
+
+    expect(chunkSizes).toEqual([4, 4, 2]);
+  });
+
+  it('should stop reading and cancel the body when onChunk throws', async () => {
+    const { response, cancelled } = createMockResponse({
+      body: new Uint8Array(40),
+    });
+    const budgetError = new Error('budget exceeded');
+    let chunks = 0;
+
+    await expect(
+      readResponseWithSizeLimit({
+        response,
+        url: 'http://example.com/file',
+        maxBytes: 100,
+        onChunk: () => {
+          chunks++;
+          if (chunks === 2) {
+            throw budgetError;
+          }
+        },
+      }),
+    ).rejects.toBe(budgetError);
+
+    expect(chunks).toBe(2);
+    expect(cancelled()).toBe(true);
+  });
+
   it('should preserve streamed size-limit errors when cancellation fails', async () => {
     const cancelError = new Error('cancel failed');
     let cancelled = false;

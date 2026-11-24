@@ -24,6 +24,9 @@ export const DEFAULT_MAX_DOWNLOAD_SIZE = 2 * 1024 * 1024 * 1024;
  * @param response - The fetch Response to read.
  * @param url - The URL being downloaded (used in error messages).
  * @param maxBytes - Maximum allowed bytes. Defaults to DEFAULT_MAX_DOWNLOAD_SIZE.
+ * @param onChunk - Optional callback invoked with each chunk before it is
+ * buffered. Throwing from it stops the read and cancels the body, which lets
+ * callers enforce a byte budget shared across several downloads.
  * @returns A Uint8Array containing the response body.
  * @throws DownloadError if the response exceeds maxBytes.
  */
@@ -31,10 +34,12 @@ export async function readResponseWithSizeLimit({
   response,
   url,
   maxBytes = DEFAULT_MAX_DOWNLOAD_SIZE,
+  onChunk,
 }: {
   response: Response;
   url: string;
   maxBytes?: number;
+  onChunk?: (chunk: Uint8Array) => void;
 }): Promise<Uint8Array> {
   // Early rejection based on Content-Length header
   const contentLength = response.headers.get('content-length');
@@ -78,6 +83,8 @@ export async function readResponseWithSizeLimit({
           message: `Download of ${url} exceeded maximum size of ${maxBytes} bytes.`,
         });
       }
+
+      onChunk?.(value);
 
       chunks.push(value);
     }
