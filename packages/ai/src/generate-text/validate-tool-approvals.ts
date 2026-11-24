@@ -19,6 +19,15 @@ import type { ToolApprovalConfiguration } from './tool-approval-configuration';
  * Re-validates approved tool approvals reconstructed from client-supplied
  * message history before they are executed. Checks HMAC signature (when
  * configured), input schema, and approval policy.
+ *
+ * `tools` must be the tools that are active for the request: the approved
+ * approvals reference tools from this object, and callers must execute them
+ * against the same object.
+ *
+ * An approved approval is only kept when the server-side policy still requires
+ * user approval for the call or explicitly approves it. Calls for tools that
+ * are not active, or whose policy is `not-applicable`, are reported as invalid
+ * so that a client cannot run tools by forging an approval.
  */
 export async function validateApprovedToolApprovals<
   TOOLS extends ToolSet,
@@ -43,13 +52,13 @@ export async function validateApprovedToolApprovals<
   approvedToolApprovals: Array<CollectedToolApprovals<TOOLS>>;
   deniedToolApprovals: Array<CollectedToolApprovals<TOOLS>>;
   invalidToolApprovals: Array<
-    CollectedToolApprovals<TOOLS> & { error: InvalidToolInputError }
+    CollectedToolApprovals<TOOLS> & { error: InvalidToolInputError | string }
   >;
 }> {
   const approved: Array<CollectedToolApprovals<TOOLS>> = [];
   const denied: Array<CollectedToolApprovals<TOOLS>> = [];
   const invalid: Array<
-    CollectedToolApprovals<TOOLS> & { error: InvalidToolInputError }
+    CollectedToolApprovals<TOOLS> & { error: InvalidToolInputError | string }
   > = [];
 
   for (const approval of approvedToolApprovals) {
@@ -106,16 +115,26 @@ export async function validateApprovedToolApprovals<
       }
     }
 
-    const approvalStatus = await resolveToolApproval({
-      tools,
-      toolApproval,
-      toolCall,
-      messages,
-      toolsContext,
-      runtimeContext,
-    });
+    // A tool that is not active for this request has no approval policy in
+    // effect, so the per-tool `toolApproval` entry must not be consulted.
+    const approvalStatus =
+      tool == null
+        ? ({ type: 'not-applicable' } as const)
+        : await resolveToolApproval({
+            tools,
+            toolApproval,
+            toolCall,
+            messages,
+            toolsContext,
+            runtimeContext,
+          });
 
-    if (approvalStatus.type === 'denied') {
+    if (approvalStatus.type === 'not-applicable') {
+      invalid.push({
+        ...approval,
+        error: `Tool "${toolCall.toolName}" does not require approval`,
+      });
+    } else if (approvalStatus.type === 'denied') {
       denied.push({
         ...approval,
         approvalResponse: {

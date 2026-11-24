@@ -30529,6 +30529,7 @@ describe('streamText', () => {
 
         expect(prepareStepResponseMessages).toMatchInlineSnapshot(`
           [
+            [],
             [
               {
                 "content": [

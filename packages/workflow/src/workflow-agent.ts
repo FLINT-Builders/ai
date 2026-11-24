@@ -1767,7 +1767,50 @@ export class WorkflowAgent<
         .map(collected => collected.approvalResponse.approvalId),
     );
 
+    // Filter tools if activeTools is specified (stream-level overrides constructor default)
+    const effectiveActiveTools = effectiveActiveToolsFromPrepare;
+    const effectiveTools =
+      effectiveActiveTools !== undefined
+        ? (filterActiveTools({
+            tools: this.tools,
+            activeTools: effectiveActiveTools,
+          }) ?? this.tools)
+        : this.tools;
+    const effectivePrepareStep = (options.prepareStep ?? this.prepareStep) as
+      | PrepareStepCallback<ToolSet, TRuntimeContext>
+      | undefined;
+
     if (approvedToolApprovals.length > 0 || deniedToolApprovals.length > 0) {
+      // Replayed approvals come from client-supplied history, so they may only
+      // run tools that are active for the first step of this stream.
+      let approvalReplayTools = effectiveTools as ToolSet;
+      if (
+        effectivePrepareStep != null &&
+        approvedToolApprovals.some(approval => !approval.providerExecuted)
+      ) {
+        const prepareStepResult = await effectivePrepareStep({
+          model: effectiveModel,
+          initialInstructions: effectiveInstructions,
+          initialMessages: prompt.messages,
+          stepNumber: 0,
+          steps: [],
+          messages: await convertToLanguageModelPrompt({
+            prompt,
+            supportedUrls: {},
+            download,
+          }),
+          runtimeContext: effectiveRuntimeContext,
+          toolsContext: effectiveToolsContext as InferToolSetContext<ToolSet>,
+          experimental_sandbox: sandbox,
+        });
+        if (prepareStepResult?.activeTools !== undefined) {
+          approvalReplayTools = filterActiveTools({
+            tools: approvalReplayTools,
+            activeTools: prepareStepResult.activeTools,
+          });
+        }
+      }
+
       const _toolResultMessages: ModelMessage[] = [];
       const toolResultContent: LanguageModelV4ToolResultPart[] = [];
       const approvedRawResults: Array<{
@@ -1824,7 +1867,7 @@ export class WorkflowAgent<
             const { deniedToolApprovals: policyDenied, invalidToolApprovals } =
               await validateApprovedToolApprovals({
                 approvedToolApprovals: [approval.collected],
-                tools: this.tools as ToolSet,
+                tools: approvalReplayTools,
                 toolApproval: undefined,
                 messages: prompt.messages,
                 toolsContext:
@@ -1870,7 +1913,7 @@ export class WorkflowAgent<
               toolName: approval.toolName,
               input: approval.input,
             },
-            this.tools as ToolSet,
+            approvalReplayTools,
             prompt.messages as unknown as LanguageModelV4Prompt,
             effectiveToolsContext,
             0,
@@ -2040,15 +2083,6 @@ export class WorkflowAgent<
     // Determine effective tool choice
     const effectiveToolChoice = effectiveToolChoiceFromPrepare;
 
-    // Filter tools if activeTools is specified (stream-level overrides constructor default)
-    const effectiveActiveTools = effectiveActiveToolsFromPrepare;
-    const effectiveTools =
-      effectiveActiveTools !== undefined
-        ? (filterActiveTools({
-            tools: this.tools,
-            activeTools: effectiveActiveTools,
-          }) ?? this.tools)
-        : this.tools;
     const effectiveModelInfo = getModelInfo(effectiveModel);
 
     // Initialize context
@@ -2310,10 +2344,7 @@ export class WorkflowAgent<
         | undefined,
       onStepEnd: mergedOnStepEnd as any,
       onStepStart: mergedOnStepStart as any,
-      prepareStep: (options.prepareStep ??
-        (this.prepareStep as
-          | PrepareStepCallback<ToolSet, TRuntimeContext>
-          | undefined)) as any,
+      prepareStep: effectivePrepareStep as any,
       generationSettings: mergedGenerationSettings,
       toolChoice: effectiveToolChoice as ToolChoice<ToolSet>,
       runtimeContext,

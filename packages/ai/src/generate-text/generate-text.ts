@@ -712,15 +712,42 @@ export async function generateText<
         deniedToolApprovals: collectedDeniedToolApprovals,
       } = collectToolApprovals<TOOLS>({ messages: initialMessages });
 
+      const localApprovedToolApprovalCandidates = approvedToolApprovals.filter(
+        toolApproval => !toolApproval.toolCall.providerExecuted,
+      );
+
+      // Replayed approvals come from client-supplied history, so they may only
+      // run tools that are active for the first step of this request.
+      const approvalReplayTools =
+        localApprovedToolApprovalCandidates.length > 0
+          ? (filterActiveTools({
+              tools,
+              activeTools:
+                (
+                  await prepareStep?.({
+                    model,
+                    steps: [],
+                    stepNumber: 0,
+                    instructions: initialPrompt.instructions,
+                    initialInstructions: initialPrompt.instructions,
+                    messages: initialMessages,
+                    initialMessages,
+                    responseMessages: [],
+                    runtimeContext,
+                    toolsContext,
+                    experimental_sandbox: sandbox,
+                  })
+                )?.activeTools ?? activeTools,
+            }) as TOOLS | undefined)
+          : tools;
+
       const {
         approvedToolApprovals: localApprovedToolApprovals,
         deniedToolApprovals: revalidationDeniedToolApprovals,
         invalidToolApprovals,
       } = await validateApprovedToolApprovals<TOOLS, RUNTIME_CONTEXT>({
-        approvedToolApprovals: approvedToolApprovals.filter(
-          toolApproval => !toolApproval.toolCall.providerExecuted,
-        ),
-        tools,
+        approvedToolApprovals: localApprovedToolApprovalCandidates,
+        tools: approvalReplayTools,
         toolApproval,
         messages: initialMessages,
         toolsContext,
@@ -745,7 +772,7 @@ export async function generateText<
           toolCalls: localApprovedToolApprovals.map(
             toolApproval => toolApproval.toolCall,
           ),
-          tools: tools as TOOLS,
+          tools: approvalReplayTools as TOOLS,
           callId,
           messages: initialMessages,
           abortSignal: mergedAbortSignal,
