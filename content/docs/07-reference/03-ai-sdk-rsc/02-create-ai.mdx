@@ -47,7 +47,7 @@ Creates a client-server context provider that can be used to wrap parts of your 
       name: 'onSetAIState',
       type: '(Event) => void',
       description:
-        'is triggered whenever an update() or done() is called by the mutable AI state in your action, so you can safely store your AI state in the database.',
+        'is triggered whenever an update() or done() is called by the mutable AI state in your action, so you can store your AI state in the database.',
       properties: [
         {
           type: 'Event',
@@ -73,6 +73,23 @@ Creates a client-server context provider that can be used to wrap parts of your 
 ### Returns
 
 It returns an `<AI/>` context provider.
+
+## AI State Integrity
+
+The AI state is held by the client between requests and sent back to the server
+with every action call. The server signs the AI state with an HMAC and rejects
+action calls whose AI state was not signed by the server or has been modified.
+Changes made on the client with [`useAIState`](/docs/reference/ai-sdk-rsc/use-ai-state)
+are therefore not sent to the server.
+
+Set the `AI_SDK_RSC_STATE_SECRET` environment variable to a long random secret
+that is the same on every server instance. If it is not set, a random key is
+generated for each server process, so AI state signed by one process is rejected
+by another (for example on serverless platforms or after a restart).
+
+A signed AI state can still be sent again by a client that received it earlier.
+Load authorization-relevant data such as user IDs from your own session and
+storage instead of trusting identifiers stored in the AI state.
 
 ## Examples
 

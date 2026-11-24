@@ -1,5 +1,6 @@
 import * as jsondiffpatch from 'jsondiffpatch';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { signAIState } from './ai-state-signature';
 import { createResolvablePromise } from './util/create-resolvable-promise';
 import { isFunction } from './util/is-function';
 import type {
@@ -200,7 +201,10 @@ function getMutableAIState<AI extends AIProvider = any>(
       }
 
       const delta = jsondiffpatch.diff(store.originalState, store.currentState);
-      store.mutationDeltaResolve!(delta);
+      const signature = signAIState(store.currentState);
+      store.mutationDeltaResolve!(
+        signature.then(signature => ({ delta, signature })),
+      );
     },
   };
 

@@ -42,6 +42,7 @@ function renderProvider(wrappedActions: Record<string, any> = {}) {
   const result = render(
     <InternalAIProvider
       initialAIState={initialAIState}
+      initialAIStateSignature="initial-signature"
       initialAIStatePatch={undefined}
       initialUIState={{}}
       wrappedActions={wrappedActions}
@@ -98,11 +99,17 @@ describe('wrapped actions', () => {
   it('applies overlapping action deltas to the current AI state', async () => {
     const result = renderProvider({
       actionA: async () => [
-        Promise.resolve({ a: ['initial-a', 'updated-a'] }),
+        Promise.resolve({
+          delta: { a: ['initial-a', 'updated-a'] },
+          signature: 'signature-a',
+        }),
         undefined,
       ],
       actionB: async () => [
-        Promise.resolve({ b: ['initial-b', 'updated-b'] }),
+        Promise.resolve({
+          delta: { b: ['initial-b', 'updated-b'] },
+          signature: 'signature-b',
+        }),
         undefined,
       ],
     });

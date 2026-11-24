@@ -11,6 +11,8 @@ import type {
   InferAIState,
   InferUIState,
   InternalAIProviderProps,
+  SignedAIState,
+  SignedAIStateDelta,
   ValueOrUpdater,
 } from '../types';
 
@@ -19,10 +21,27 @@ const InternalAIStateProvider = React.createContext<undefined | any>(undefined);
 const InternalActionProvider = React.createContext<null | any>(null);
 const InternalSyncUIStateProvider = React.createContext<null | any>(null);
 
+function applySignedDelta(
+  signedState: SignedAIState,
+  signedDelta: SignedAIStateDelta,
+): SignedAIState {
+  return {
+    state:
+      signedDelta.delta === undefined
+        ? signedState.state
+        : jsondiffpatch.patch(
+            jsondiffpatch.clone(signedState.state),
+            signedDelta.delta as jsondiffpatch.Delta,
+          ),
+    signature: signedDelta.signature,
+  };
+}
+
 export function InternalAIProvider({
   children,
   initialUIState,
   initialAIState,
+  initialAIStateSignature,
   initialAIStatePatch,
   wrappedActions,
   wrappedSyncUIState,
@@ -34,26 +53,25 @@ export function InternalAIProvider({
   const uiState = React.useState(initialUIState);
   const setUIState = uiState[1];
 
-  const resolvedInitialAIStatePatch = initialAIStatePatch
-    ? (React as any).use(initialAIStatePatch)
-    : undefined;
-  initialAIState = React.useMemo(() => {
-    if (resolvedInitialAIStatePatch) {
-      return jsondiffpatch.patch(
-        jsondiffpatch.clone(initialAIState),
-        resolvedInitialAIStatePatch,
-      );
-    }
-    return initialAIState;
-  }, [initialAIState, resolvedInitialAIStatePatch]);
+  const resolvedInitialAIStatePatch: SignedAIStateDelta | undefined =
+    initialAIStatePatch ? (React as any).use(initialAIStatePatch) : undefined;
+  const initialSignedAIState = React.useMemo(() => {
+    const signedState = {
+      state: initialAIState,
+      signature: initialAIStateSignature,
+    };
+    return resolvedInitialAIStatePatch
+      ? applySignedDelta(signedState, resolvedInitialAIStatePatch)
+      : signedState;
+  }, [initialAIState, initialAIStateSignature, resolvedInitialAIStatePatch]);
 
-  const aiState = React.useState(initialAIState);
+  const aiState = React.useState(initialSignedAIState.state);
   const setAIState = aiState[1];
-  const aiStateRef = React.useRef(aiState[0]);
 
-  React.useEffect(() => {
-    aiStateRef.current = aiState[0];
-  }, [aiState[0]]);
+  // The server only accepts AI state that it has signed, so actions receive the
+  // latest state returned by the server rather than the client's AI state,
+  // which can also be changed on the client with `useAIState`.
+  const signedAIStateRef = React.useRef<SignedAIState>(initialSignedAIState);
 
   const clientWrappedActions = React.useMemo(
     () =>
@@ -61,17 +79,27 @@ export function InternalAIProvider({
         Object.entries(wrappedActions).map(([key, action]) => [
           key,
           async (...args: any) => {
-            const aiStateSnapshot = aiStateRef.current;
+            const signedAIStateSnapshot = signedAIStateRef.current;
             const [aiStateDelta, result] = await action(
-              aiStateSnapshot,
+              signedAIStateSnapshot,
               ...args,
             );
             (async () => {
-              const delta = await aiStateDelta;
-              if (delta !== undefined) {
-                setAIState((currentState: any) =>
-                  jsondiffpatch.patch(jsondiffpatch.clone(currentState), delta),
+              const signedDelta = await aiStateDelta;
+              if (signedDelta !== undefined) {
+                signedAIStateRef.current = applySignedDelta(
+                  signedAIStateSnapshot,
+                  signedDelta,
                 );
+                const delta = signedDelta.delta;
+                if (delta !== undefined) {
+                  setAIState((currentState: any) =>
+                    jsondiffpatch.patch(
+                      jsondiffpatch.clone(currentState),
+                      delta as jsondiffpatch.Delta,
+                    ),
+                  );
+                }
               }
             })();
             return result;
@@ -87,21 +115,25 @@ export function InternalAIProvider({
     }
 
     return async () => {
-      const aiStateSnapshot = aiStateRef.current;
-      const [aiStateDelta, uiState] =
-        await wrappedSyncUIState!(aiStateSnapshot);
+      const signedAIStateSnapshot = signedAIStateRef.current;
+      const [aiStateDelta, uiState] = await wrappedSyncUIState!(
+        signedAIStateSnapshot,
+      );
 
       if (uiState !== undefined) {
         setUIState(uiState);
       }
 
-      const delta = await aiStateDelta;
-      if (delta !== undefined) {
-        const patchedAiState = jsondiffpatch.patch(
-          jsondiffpatch.clone(aiStateSnapshot),
-          delta,
+      const signedDelta = await aiStateDelta;
+      if (signedDelta !== undefined) {
+        const patchedSignedAIState = applySignedDelta(
+          signedAIStateSnapshot,
+          signedDelta,
         );
-        setAIState(patchedAiState);
+        signedAIStateRef.current = patchedSignedAIState;
+        if (signedDelta.delta !== undefined) {
+          setAIState(patchedSignedAIState.state);
+        }
       }
     };
   }, [wrappedSyncUIState]);

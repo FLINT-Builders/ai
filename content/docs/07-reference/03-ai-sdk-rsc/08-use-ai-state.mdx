@@ -24,3 +24,7 @@ The AI state is intended to contain context and information shared with the AI m
 ### Returns
 
 Similar to useState, it is an array where the first element is the current AI state and the second element is a function to update the state.
+
+Updates made with this function only change the AI state on the client. Actions
+always receive the latest AI state signed by the server (see
+[AI state integrity](/docs/reference/ai-sdk-rsc/create-ai#ai-state-integrity)).
