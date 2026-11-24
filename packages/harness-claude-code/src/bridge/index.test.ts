@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { z } from 'zod/v4';
 
@@ -48,6 +49,11 @@ const state = vi.hoisted(() => ({
   requestToolResult: undefined as
     | ((input: Record<string, unknown>) => Promise<Record<string, unknown>>)
     | undefined,
+  approvalDecision: { approved: true } as {
+    approved: boolean;
+    reason?: string;
+  },
+  approvalRequests: [] as string[],
 }));
 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
@@ -171,7 +177,10 @@ vi.mock('@ai-sdk/harness/bridge', () => ({
         emitError: (input: unknown) => state.emitError?.(input),
         requestToolResult: async (input: Record<string, unknown>) =>
           state.requestToolResult?.(input) ?? { output: {} },
-        requestToolApproval: async () => ({ approved: true }),
+        requestToolApproval: async (approvalId: string) => {
+          state.approvalRequests.push(approvalId);
+          return state.approvalDecision;
+        },
       });
     }
   },
@@ -192,6 +201,8 @@ describe('Claude Code bridge configuration', () => {
     state.turnAbortController = undefined;
     state.emitError = undefined;
     state.requestToolResult = undefined;
+    state.approvalDecision = { approved: true };
+    state.approvalRequests = [];
     state.onStop = undefined;
     state.firstTurn = true;
     state.additionalTurns = [];
@@ -952,5 +963,291 @@ describe('Claude Code bridge configuration', () => {
     expect(state.emitted).toContainEqual(
       expect.objectContaining({ type: 'finish' }),
     );
+  });
+});
+
+/*
+ * Shell approval under allow-edits. The bridge's canUseTool is the callback
+ * the pinned Claude Agent SDK invokes for a CLI `can_use_tool` request
+ * (`@anthropic-ai/claude-agent-sdk@0.3.245` processControlRequest). These
+ * tests call that callback with the tool name and input the CLI would send.
+ */
+type PermissionDecision = {
+  behavior: string;
+  updatedInput?: Record<string, unknown>;
+  toolUseID?: string;
+  message?: string;
+};
+
+type CanUseTool = (
+  toolName: string,
+  toolInput: Record<string, unknown>,
+  options: { toolUseID: string },
+) => Promise<PermissionDecision>;
+
+/**
+ * Native names of host built-ins declared with `toolUseKind: 'bash'` in the
+ * Claude Code harness catalog. Read from that source so a new shell tool
+ * there is covered without a second handwritten list.
+ */
+function shellNativeToolNames(): string[] {
+  const source = readFileSync(
+    new URL('../claude-code-harness.ts', import.meta.url),
+    'utf8',
+  );
+  const catalog = source.slice(
+    source.indexOf('const CLAUDE_CODE_BUILTIN_TOOLS'),
+  );
+  const names: string[] = [];
+  for (const match of catalog.matchAll(/toolUseKind: 'bash'/g)) {
+    const before = catalog.slice(Math.max(0, match.index - 600), match.index);
+    const nativeName = [...before.matchAll(/nativeName: '([^']+)'/g)].at(-1);
+    const key = [...before.matchAll(/\n {2}([A-Za-z0-9_]+):/g)].at(-1);
+    if (key == null) {
+      throw new Error('bash toolUseKind is not inside a catalog entry');
+    }
+    names.push(
+      nativeName != null && nativeName.index > key.index
+        ? nativeName[1]
+        : key[1],
+    );
+  }
+  return names.sort();
+}
+
+function permissionAskRules(): string[] {
+  const settings = state.queryArgs[0]?.options.settings as
+    | { permissions?: { ask?: string[] } }
+    | undefined;
+  return [...(settings?.permissions?.ask ?? [])].sort();
+}
+
+async function loadCanUseTool(): Promise<CanUseTool> {
+  await import('./index');
+  const canUseTool = state.queryArgs[0]?.options.canUseTool as
+    | CanUseTool
+    | undefined;
+  expect(canUseTool).toEqual(expect.any(Function));
+  return canUseTool as CanUseTool;
+}
+
+describe('Claude Code bridge shell approvals', () => {
+  beforeEach(() => {
+    state.emitted = [];
+    state.messages = [
+      {
+        type: 'result',
+        subtype: 'success',
+        result: 'done',
+      },
+    ];
+    state.queryArgs = [];
+    state.createQuery = undefined;
+    state.turnAbortController = undefined;
+    state.emitError = undefined;
+    state.requestToolResult = undefined;
+    state.approvalDecision = { approved: false, reason: 'shell denied' };
+    state.approvalRequests = [];
+    state.onStop = undefined;
+    state.firstTurn = true;
+    state.additionalTurns = [];
+    state.start = {
+      prompt: 'Inspect the project.',
+      thinking: { type: 'disabled' },
+      permissionMode: 'allow-edits',
+    };
+    state.steering = false;
+    state.acceptedUserMessages = [];
+    state.queryInputs = [];
+    state.toolHandlers = new Map();
+    state.originalArgv = [...process.argv];
+    state.originalEnv = Object.fromEntries(
+      TEST_ENV_KEYS.map(key => [key, process.env[key]]),
+    );
+    for (const key of TEST_ENV_KEYS) {
+      delete process.env[key];
+    }
+    process.argv.splice(
+      0,
+      process.argv.length,
+      'node',
+      'bridge.mjs',
+      '--workdir',
+      '/tmp/harness-claude-code-test/work',
+      '--bridge-state-dir',
+      '/tmp/harness-claude-code-test/state',
+    );
+  });
+
+  afterEach(() => {
+    process.argv.splice(0, process.argv.length, ...state.originalArgv);
+    for (const key of TEST_ENV_KEYS) {
+      const value = state.originalEnv[key];
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+    vi.resetModules();
+  });
+
+  test('asks for every host shell built-in under allow-edits', async () => {
+    await import('./index');
+
+    expect(state.queryArgs[0]?.options.permissionMode).toBe('acceptEdits');
+    const shellTools = shellNativeToolNames();
+    expect(shellTools).toEqual(['Bash', 'Monitor', 'PowerShell']);
+    expect(permissionAskRules()).toEqual(
+      expect.arrayContaining(shellTools.map(name => `${name}(*)`)),
+    );
+  });
+
+  test('does not run a PowerShell command under allow-edits when the host denies it', async () => {
+    const command = 'Write-Output approval-bypass-marker';
+    const toolInput = { command };
+    const canUseTool = await loadCanUseTool();
+
+    const decision = await canUseTool('PowerShell', toolInput, {
+      toolUseID: 'powershell-1',
+    });
+
+    expect(state.approvalRequests).toEqual(['powershell-1']);
+    expect(state.emitted).toContainEqual({
+      type: 'tool-call',
+      toolCallId: 'powershell-1',
+      toolName: 'PowerShell',
+      nativeName: 'PowerShell',
+      input: JSON.stringify(toolInput),
+      providerExecuted: true,
+    });
+    expect(state.emitted).toContainEqual({
+      type: 'tool-approval-request',
+      approvalId: 'powershell-1',
+      toolCallId: 'powershell-1',
+    });
+    expect(decision).toEqual({
+      behavior: 'deny',
+      message: 'shell denied',
+      toolUseID: 'powershell-1',
+    });
+  });
+
+  test('runs a PowerShell command under allow-edits only after the host approves that command', async () => {
+    const command = 'Write-Output approval-bypass-marker';
+    const toolInput = { command };
+    state.approvalDecision = { approved: true };
+    const canUseTool = await loadCanUseTool();
+
+    const decision = await canUseTool('PowerShell', toolInput, {
+      toolUseID: 'powershell-2',
+    });
+
+    expect(state.approvalRequests).toEqual(['powershell-2']);
+    expect(
+      state.emitted.find(
+        event =>
+          event.type === 'tool-call' && event.toolCallId === 'powershell-2',
+      ),
+    ).toMatchObject({
+      nativeName: 'PowerShell',
+      input: JSON.stringify(toolInput),
+    });
+    expect(decision).toEqual({
+      behavior: 'allow',
+      updatedInput: toolInput,
+      toolUseID: 'powershell-2',
+    });
+  });
+
+  test('does not run an unlisted built-in under allow-edits when the host denies it', async () => {
+    const toolInput = { command: 'Write-Output approval-bypass-marker' };
+    const canUseTool = await loadCanUseTool();
+
+    const decision = await canUseTool('FutureShell', toolInput, {
+      toolUseID: 'future-shell-1',
+    });
+
+    expect(state.approvalRequests).toEqual(['future-shell-1']);
+    expect(state.emitted).toContainEqual(
+      expect.objectContaining({
+        type: 'tool-approval-request',
+        approvalId: 'future-shell-1',
+        toolCallId: 'future-shell-1',
+      }),
+    );
+    expect(decision).toEqual({
+      behavior: 'deny',
+      message: 'shell denied',
+      toolUseID: 'future-shell-1',
+    });
+  });
+
+  test('still allows a listed edit tool under allow-edits without host approval', async () => {
+    const toolInput = {
+      file_path: '/tmp/harness-claude-code-test/note.txt',
+      content: 'note',
+    };
+    const canUseTool = await loadCanUseTool();
+
+    const decision = await canUseTool('Write', toolInput, {
+      toolUseID: 'write-1',
+    });
+
+    expect(state.approvalRequests).toEqual([]);
+    expect(
+      state.emitted.filter(event => event.type === 'tool-approval-request'),
+    ).toEqual([]);
+    expect(decision).toEqual({
+      behavior: 'allow',
+      updatedInput: toolInput,
+    });
+  });
+
+  test('still requires approval for listed shell tools under allow-edits', async () => {
+    const canUseTool = await loadCanUseTool();
+
+    for (const nativeName of ['Bash', 'Monitor'] as const) {
+      state.emitted = [];
+      state.approvalRequests = [];
+      const toolInput = { command: `${nativeName}-marker` };
+      const toolUseID = `${nativeName}-deny`;
+      const decision = await canUseTool(nativeName, toolInput, { toolUseID });
+
+      expect(state.approvalRequests).toEqual([toolUseID]);
+      expect(decision).toEqual({
+        behavior: 'deny',
+        message: 'shell denied',
+        toolUseID,
+      });
+      expect(
+        state.emitted.find(event => event.type === 'tool-call'),
+      ).toMatchObject({
+        toolCallId: toolUseID,
+        nativeName,
+        input: JSON.stringify(toolInput),
+      });
+    }
+  });
+
+  test('requires approval for PowerShell under allow-reads', async () => {
+    state.start = {
+      ...state.start,
+      permissionMode: 'allow-reads',
+    };
+    const toolInput = { command: 'Write-Output approval-bypass-marker' };
+    const canUseTool = await loadCanUseTool();
+
+    const decision = await canUseTool('PowerShell', toolInput, {
+      toolUseID: 'powershell-reads',
+    });
+
+    expect(state.queryArgs[0]?.options.permissionMode).toBe('default');
+    expect(state.approvalRequests).toEqual(['powershell-reads']);
+    expect(decision).toEqual({
+      behavior: 'deny',
+      message: 'shell denied',
+      toolUseID: 'powershell-reads',
+    });
   });
 });
