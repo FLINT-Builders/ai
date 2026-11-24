@@ -1,4 +1,5 @@
 import { LoadSettingError } from '@ai-sdk/provider';
+import { recordEnvironmentValue } from './record-environment-values';
 
 /**
  * Loads a `string` setting from the environment or a parameter.
@@ -58,5 +59,6 @@ export function loadSetting({
     });
   }
 
+  recordEnvironmentValue(environmentVariableName, settingValue);
   return settingValue;
 }

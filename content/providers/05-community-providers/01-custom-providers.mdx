@@ -793,8 +793,8 @@ Then add the static serialization methods to your model class:
 
 ```ts filename="custom-chat-language-model.ts"
 import {
-  serializeModel,
-  deserializeModel,
+  deserializeModelConfig,
+  serializeModelOptions,
   WORKFLOW_SERIALIZE,
   WORKFLOW_DESERIALIZE,
 } from '@ai-sdk/provider-utils';
@@ -803,23 +803,35 @@ class CustomChatLanguageModel implements LanguageModelV4 {
   // Note: classId is generated automatically by the workflow SWC compiler at build time
 
   static [WORKFLOW_SERIALIZE](model: CustomChatLanguageModel) {
-    return serializeModel(model);
+    return serializeModelOptions({
+      modelId: model.modelId,
+      config: model.config,
+    });
   }
 
   static [WORKFLOW_DESERIALIZE](options: {
     modelId: string;
     config: CustomChatConfig;
   }) {
-    return deserializeModel(CustomChatLanguageModel, options);
+    return new CustomChatLanguageModel(
+      options.modelId,
+      deserializeModelConfig(options.config),
+    );
   }
 
   // ... rest of class
 }
 ```
 
-`serializeModel()` automatically extracts only serializable config properties (strings, numbers, booleans), filtering out functions like `headers`, `fetch`, and `generateId`.
+`serializeModelOptions()` keeps only JSON-serializable config properties (strings, numbers, booleans, plain objects and arrays of these), filtering out functions like `fetch` and `generateId`.
 
-Since headers are not serialized, update any call sites to use optional chaining:
+The serialized config is persisted by the workflow runtime, so resolved header values are not written to it:
+
+- A header whose value is an API key loaded with `loadApiKey` (or `loadSetting` / `loadOptionalSetting`) from an environment variable, optionally preceded by an auth scheme such as `Bearer `, is stored as a reference to that environment variable. `deserializeModelConfig()` rebuilds `headers` so that the key is read again from the environment of the workflow step.
+- A small set of non-credential protocol headers (for example `anthropic-version` and `user-agent`) is kept.
+- All other headers, including API keys passed explicitly with the `apiKey` setting and custom `headers` values, are dropped.
+
+Since the deserialized model may not have `headers`, update any call sites to use optional chaining:
 
 ```ts
 // Before
@@ -830,9 +842,9 @@ headers: combineHeaders(this.config.headers?.(), options.headers),
 ```
 
 <Note>
-  The deserialized model will not have auth headers. In a workflow context,
-  authentication is typically handled through environment variables or
-  request-level options available in the step execution environment.
+  To authenticate a deserialized model, set the API key environment variable in
+  the step execution environment. API keys passed with the `apiKey` setting do
+  not cross workflow step boundaries.
 </Note>
 
 ## Next Steps
