@@ -12,14 +12,18 @@ import type { PolicyDecision } from '../policy-decision';
  * - **Legacy (boolean):** `{ "allow": boolean, "reason"?: string }`. `true`
  *   maps to `approved`, `false` to `denied`.
  *
- * `null` and `undefined` are treated as `not-applicable` so that a Rego rule
- * that does not match any branch defaults to "no opinion" rather than
- * blocking. Any other unrecognized result is denied so malformed policy
- * output cannot silently bypass the approval gate.
+ * `null` and `undefined` (a partial Rego rule that matched no branch) are
+ * denied. `not-applicable` lets the tool run without approval, so it is only
+ * returned when the policy says so explicitly with
+ * `{ "decision": "not-applicable" }`. Any other unrecognized result is denied
+ * so malformed policy output cannot silently bypass the approval gate.
  */
 export function normalizeOpaDecision(result: unknown): PolicyDecision {
   if (result == null) {
-    return { type: 'not-applicable' };
+    return {
+      type: 'denied',
+      reason: 'no matching OPA policy decision',
+    };
   }
 
   if (typeof result !== 'object') {

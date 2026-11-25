@@ -58,7 +58,8 @@ The policy is consulted before every tool dispatch and maps to one of the standa
 - `allow` runs the tool.
 - `deny` returns a denied result the model can reason about (no human needed).
 - `requires-approval` pauses the run and waits for a human `tool-approval-response`.
-- No matching rule normalizes to `not-applicable`, which the SDK treats as allow. Add `default decision := { "decision": "deny" }` to your policy to default-deny instead.
+- No matching rule (a partial rule that returns no result) is denied.
+- An explicit `{ "decision": "not-applicable" }` runs the tool without approval. The tool's own `needsApproval` setting is not consulted.
 
 ## Quick start
 
@@ -94,9 +95,10 @@ The policy emits a decision object. `reason` is optional and is surfaced back to
 ```rego
 package agent.call
 
-# Default to "not-applicable" so unmatched calls fall through.
-# Use { decision: "deny" } to default-deny instead.
-default decision := { "decision": "not-applicable" }
+# Deny unmatched calls with a reason the model can see. Without a default,
+# unmatched calls are still denied. Avoid defaulting to "not-applicable":
+# it runs every unmatched tool without approval.
+default decision := { "decision": "deny", "reason": "not permitted by policy" }
 
 # Hard deny: pushes are never allowed automatically.
 decision := { "decision": "deny", "reason": "pushes require human review" } {
@@ -159,7 +161,7 @@ Run with `opa test policy.rego policy_test.rego`.
 - If the backend returns a present but unrecognized decision, such as an unknown `decision` value or a non-boolean legacy `allow` value, `opaPolicy` returns `denied`.
 - The error never rejects out of the callback and never aborts the run.
 - A backend outage blocks the affected call rather than silently allowing it.
-- This is distinct from a rule that returns no match: `null` or `undefined` normalizes to `not-applicable` (allow). Use a `default ... deny` rule if you want unmatched calls denied too.
+- A rule that returns no match (`null` or `undefined`) is also denied. A partial Rego rule is deny-by-default; only an explicit `allow`, `requires-approval`, or `not-applicable` decision lets a call through.
 
 ## Loading the policy
 

@@ -77,10 +77,11 @@ The adapter expects the policy to emit a decision object with one of three `deci
 ```rego
 package agent.call
 
-# Default to "not-applicable" so unmatched calls fall through to whatever
-# behavior toolApproval has configured for them. Use { decision: "deny" } if
-# you want to default-deny instead.
-default decision := { "decision": "not-applicable" }
+# Deny unmatched calls with a reason the model can see. Without a default,
+# unmatched calls are still denied. Avoid defaulting to "not-applicable": it
+# runs every unmatched tool without approval and the tool's own
+# needsApproval setting is not consulted.
+default decision := { "decision": "deny", "reason": "not permitted by policy" }
 
 # Hard deny: pushes are never allowed automatically.
 decision := { "decision": "deny", "reason": "pushes require human review" } {
@@ -109,7 +110,7 @@ If the backend itself errors (OPA server unreachable, WASM fault, a misbuilt bun
 
 Present but unrecognized policy results, such as an unknown `decision` value or a non-boolean legacy `allow` value, also fail closed with a denied result.
 
-This is distinct from a Rego rule that returns no matching decision: `null` or `undefined` normalizes to `not-applicable` ("no opinion"), which the SDK treats as allow. Use `default decision := { "decision": "deny" }` in your policy if you want unmatched calls to be denied too.
+A Rego rule that returns no matching decision (`null` or `undefined`, as from a partial rule with no matching branch) is also denied, so a partial rule is deny-by-default. Only an explicit `allow`, `requires-approval`, or `{ "decision": "not-applicable" }` lets a call through; `not-applicable` runs the tool without approval.
 
 ### What the adapter passes as `input`
 
