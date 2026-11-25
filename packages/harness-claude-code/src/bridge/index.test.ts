@@ -270,6 +270,44 @@ describe('Claude Code bridge configuration', () => {
     expect(state.queryArgs[0]?.options).toMatchObject({ effort: 'max' });
   });
 
+  test('passes the host skill names to the Agent SDK as an allowlist', async () => {
+    state.start = {
+      ...state.start,
+      skills: ['trusted-operator-skill'],
+    };
+
+    await import('./index');
+
+    expect(state.queryArgs[0]?.options.skills).toEqual([
+      'trusted-operator-skill',
+    ]);
+  });
+
+  test('keeps each turn on the skill names from that start message', async () => {
+    state.start = {
+      ...state.start,
+      skills: ['trusted-operator-skill'],
+    };
+    state.additionalTurns = [
+      {
+        start: {
+          prompt: 'Continue.',
+          thinking: { type: 'disabled' },
+          skills: ['trusted-operator-skill', 'second-trusted-skill'],
+          continue: true,
+        },
+        firstTurn: false,
+      },
+    ];
+
+    await import('./index');
+
+    expect(state.queryArgs.map(args => args.options.skills)).toEqual([
+      ['trusted-operator-skill'],
+      ['trusted-operator-skill', 'second-trusted-skill'],
+    ]);
+  });
+
   test('resumes the exact conversation when the start names one', async () => {
     state.start = { ...state.start, resumeSessionId: 'claude-session-1' };
     state.firstTurn = false;
