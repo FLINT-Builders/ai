@@ -38,6 +38,7 @@ export {
 export {
   createModelCallToUIChunkTransform,
   toUIMessageChunk,
+  type ToUIMessageChunkOptions,
 } from './to-ui-message-chunk.js';
 
 export type { ModelCallStreamPart } from './do-stream-step.js';

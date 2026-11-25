@@ -1,12 +1,27 @@
 import type { ToolSet, UIMessageChunk } from 'ai';
 import type { ModelCallStreamPart } from './do-stream-step.js';
 
+const defaultOnError = () => 'An error occurred.';
+
+export type ToUIMessageChunkOptions = {
+  /**
+   * Maps an error from a model error part, a failed tool call, or a tool
+   * execution failure to the `errorText` sent to the client.
+   *
+   * Defaults to a generic message so that server error details (provider
+   * response bodies, request URLs, exception messages) are not sent to the
+   * client. Use this to log the error or to return a sanitized message.
+   */
+  onError?: (error: unknown) => string;
+};
+
 /**
  * Convert a single ModelCallStreamPart to a UIMessageChunk.
  * Returns undefined for parts that don't map to UI chunks.
  */
 export function toUIMessageChunk(
   part: ModelCallStreamPart<ToolSet>,
+  { onError = defaultOnError }: ToUIMessageChunkOptions = {},
 ): UIMessageChunk | undefined {
   switch (part.type) {
     case 'reset-step':
@@ -134,10 +149,7 @@ export function toUIMessageChunk(
           toolCallId: toolCallPart.toolCallId,
           toolName: toolCallPart.toolName,
           input: toolCallPart.input,
-          errorText:
-            toolCallPart.error instanceof Error
-              ? toolCallPart.error.message
-              : String(toolCallPart.error ?? 'Invalid tool call'),
+          errorText: onError(toolCallPart.error),
         };
       }
       return {
@@ -165,17 +177,14 @@ export function toUIMessageChunk(
       return {
         type: 'tool-output-error',
         toolCallId: part.toolCallId,
-        errorText:
-          part.error instanceof Error ? part.error.message : String(part.error),
+        errorText: onError(part.error),
       };
 
-    case 'error': {
-      const error = part.error;
+    case 'error':
       return {
         type: 'error',
-        errorText: error instanceof Error ? error.message : String(error),
+        errorText: onError(part.error),
       };
-    }
 
     // These don't produce UI chunks
     case 'tool-input-end':
@@ -225,13 +234,17 @@ export function toUIMessageChunk(
  */
 export function createModelCallToUIChunkTransform({
   uiStartIndex = 0,
+  onError,
 }: {
   /**
    * Number of transformed UIMessageChunks to omit from the output.
    * Must be a non-negative safe integer.
    */
   uiStartIndex?: number;
-} = {}): TransformStream<ModelCallStreamPart<ToolSet>, UIMessageChunk> {
+} & ToUIMessageChunkOptions = {}): TransformStream<
+  ModelCallStreamPart<ToolSet>,
+  UIMessageChunk
+> {
   if (!Number.isSafeInteger(uiStartIndex) || uiStartIndex < 0) {
     throw new RangeError('uiStartIndex must be a non-negative safe integer');
   }
@@ -257,7 +270,7 @@ export function createModelCallToUIChunkTransform({
       enqueue(controller, { type: 'finish' });
     },
     transform: (part, controller) => {
-      const uiChunk = toUIMessageChunk(part);
+      const uiChunk = toUIMessageChunk(part, { onError });
       if (uiChunk) {
         enqueue(controller, uiChunk);
       }

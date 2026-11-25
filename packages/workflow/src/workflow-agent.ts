@@ -1775,6 +1775,7 @@ export class WorkflowAgent<
         toolName: string;
         input: unknown;
         output: unknown;
+        isError: boolean;
       }> = [];
 
       // Execute approved tools
@@ -1882,6 +1883,7 @@ export class WorkflowAgent<
             toolName: approval.toolName,
             input: approval.input,
             output: result.rawOutput,
+            isError: result.isError,
           });
         }
       }
@@ -3167,6 +3169,7 @@ async function writeApprovalToolResults(
     toolName: string;
     input: unknown;
     output: unknown;
+    isError: boolean;
   }>,
   deniedResults: Array<{ toolCallId: string }>,
 ) {
@@ -3174,13 +3177,23 @@ async function writeApprovalToolResults(
   const writer = writable.getWriter();
   try {
     for (const r of approvedResults) {
-      await writer.write({
-        type: 'tool-result',
-        toolCallId: r.toolCallId,
-        toolName: r.toolName,
-        input: r.input,
-        output: r.output,
-      });
+      await writer.write(
+        r.isError
+          ? {
+              type: 'tool-error',
+              toolCallId: r.toolCallId,
+              toolName: r.toolName,
+              input: r.input,
+              error: r.output,
+            }
+          : {
+              type: 'tool-result',
+              toolCallId: r.toolCallId,
+              toolName: r.toolName,
+              input: r.input,
+              output: r.output,
+            },
+      );
     }
     for (const r of deniedResults) {
       await writer.write({
