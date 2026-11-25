@@ -1,4 +1,5 @@
 import {
+  InvalidArgumentError,
   NoSuchModelError,
   type LanguageModelV4,
   type ProviderV4,
@@ -115,6 +116,25 @@ export const googleVertexAnthropicTools: GoogleVertexAnthropicTools = {
    */
   toolSearchBm25_20251119: anthropicTools.toolSearchBm25_20251119,
 };
+
+// Every allowed character is a literal RFC 3986 path character, and the
+// leading alphanumeric rules out `.` and `..` dot segments, so the id stays a
+// single `models/<id>` segment without further encoding.
+const MODEL_ID_PATH_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._@-]*$/;
+
+function toModelIdPathSegment(modelId: string): string {
+  if (!MODEL_ID_PATH_SEGMENT.test(modelId)) {
+    throw new InvalidArgumentError({
+      argument: 'modelId',
+      message:
+        `Invalid Google Vertex Anthropic model id "${modelId}". ` +
+        'Model ids must start with a letter or digit and contain only ' +
+        'letters, digits, ".", "_", "@", and "-".',
+    });
+  }
+  return modelId;
+}
+
 export interface GoogleVertexAnthropicProvider extends ProviderV4 {
   /**
    * Creates a model for text generation.
@@ -211,7 +231,7 @@ export function createGoogleVertexAnthropic(
       fetch: options.fetch,
 
       buildRequestUrl: (baseURL, isStreaming) =>
-        `${baseURL}/${modelId}:${
+        `${baseURL}/${toModelIdPathSegment(modelId)}:${
           isStreaming ? 'streamRawPredict' : 'rawPredict'
         }`,
       transformRequestBody: args => {
