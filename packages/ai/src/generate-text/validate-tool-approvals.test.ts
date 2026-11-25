@@ -114,9 +114,9 @@ describe('validateApprovedToolApprovals', () => {
     });
 
     expect(result.approvedToolApprovals).toHaveLength(0);
-    expect(result.invalidToolApprovals[0].error.message).toMatch(
-      /Invalid input for tool deleteFile/,
-    );
+    expect(result.invalidToolApprovals[0].error).toMatchObject({
+      message: expect.stringMatching(/Invalid input for tool deleteFile/),
+    });
   });
 
   it('should move approvals to denied when the approval policy denies them', async () => {

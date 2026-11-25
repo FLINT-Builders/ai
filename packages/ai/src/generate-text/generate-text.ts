@@ -712,6 +712,12 @@ export async function generateText<
         deniedToolApprovals: collectedDeniedToolApprovals,
       } = collectToolApprovals<TOOLS>({ messages: initialMessages });
 
+      // Approvals replayed from message history may only run tools allowed
+      // for this call.
+      const approvalTools = filterActiveTools({ tools, activeTools }) as
+        | TOOLS
+        | undefined;
+
       const {
         approvedToolApprovals: localApprovedToolApprovals,
         deniedToolApprovals: revalidationDeniedToolApprovals,
@@ -721,6 +727,7 @@ export async function generateText<
           toolApproval => !toolApproval.toolCall.providerExecuted,
         ),
         tools,
+        activeTools,
         toolApproval,
         messages: initialMessages,
         toolsContext,
@@ -745,7 +752,7 @@ export async function generateText<
           toolCalls: localApprovedToolApprovals.map(
             toolApproval => toolApproval.toolCall,
           ),
-          tools: tools as TOOLS,
+          tools: approvalTools as TOOLS,
           callId,
           messages: initialMessages,
           abortSignal: mergedAbortSignal,
@@ -780,7 +787,7 @@ export async function generateText<
           const modelOutput = await createToolModelOutput({
             toolCallId: output.toolCallId,
             input: output.input,
-            tool: getOwn(tools, output.toolName),
+            tool: getOwn(approvalTools, output.toolName),
             output:
               output.type === 'tool-result' ? output.output : output.error,
             errorMode: output.type === 'tool-error' ? 'text' : 'none',
@@ -805,7 +812,7 @@ export async function generateText<
             output: await createToolModelOutput({
               toolCallId: toolApproval.toolCall.toolCallId,
               input: toolApproval.toolCall.input,
-              tool: getOwn(tools, toolApproval.toolCall.toolName),
+              tool: getOwn(approvalTools, toolApproval.toolCall.toolName),
               output: toolApproval.error,
               errorMode: 'text',
             }),

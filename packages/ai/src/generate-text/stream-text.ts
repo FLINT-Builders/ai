@@ -2032,6 +2032,12 @@ class DefaultStreamTextResult<
 
       // initial tool execution step stream
       if (deniedToolApprovals.length > 0 || approvedToolApprovals.length > 0) {
+        // Approvals replayed from message history may only run tools allowed
+        // for this call.
+        const approvalTools = filterActiveTools({ tools, activeTools }) as
+          | TOOLS
+          | undefined;
+
         const {
           approvedToolApprovals: localApprovedToolApprovals,
           deniedToolApprovals: revalidationDeniedToolApprovals,
@@ -2041,6 +2047,7 @@ class DefaultStreamTextResult<
             toolApproval => !toolApproval.toolCall.providerExecuted,
           ),
           tools,
+          activeTools,
           toolApproval,
           messages: initialMessages,
           toolsContext,
@@ -2111,7 +2118,7 @@ class DefaultStreamTextResult<
             localApprovedToolApprovals.map(async toolApproval => {
               const result = await executeToolCall({
                 toolCall: toolApproval.toolCall,
-                tools,
+                tools: approvalTools,
                 callId,
                 messages: initialMessages,
                 abortSignal,
@@ -2157,7 +2164,7 @@ class DefaultStreamTextResult<
                 output: await createToolModelOutput({
                   toolCallId: output.toolCallId,
                   input: output.input,
-                  tool: getOwn(tools, output.toolName),
+                  tool: getOwn(approvalTools, output.toolName),
                   output:
                     output.type === 'tool-result'
                       ? output.output
@@ -2178,7 +2185,7 @@ class DefaultStreamTextResult<
                 output: await createToolModelOutput({
                   toolCallId: toolApproval.toolCall.toolCallId,
                   input: toolApproval.toolCall.input,
-                  tool: getOwn(tools, toolApproval.toolCall.toolName),
+                  tool: getOwn(approvalTools, toolApproval.toolCall.toolName),
                   output: toolApproval.error,
                   errorMode: 'text',
                 }),

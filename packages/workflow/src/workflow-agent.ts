@@ -1720,6 +1720,18 @@ export class WorkflowAgent<
       options.onToolExecutionEnd,
     );
 
+    // Filter tools if activeTools is specified (stream-level overrides constructor default).
+    // Resolved before approval replay so replayed approvals cannot reach tools
+    // outside the active set.
+    const effectiveActiveTools = effectiveActiveToolsFromPrepare;
+    const effectiveTools =
+      effectiveActiveTools !== undefined
+        ? (filterActiveTools({
+            tools: this.tools,
+            activeTools: effectiveActiveTools,
+          }) ?? this.tools)
+        : this.tools;
+
     // Process tool approval responses before starting the agent loop.
     // This mirrors how stream-text.ts handles tool-approval-response parts:
     // approved tools are executed, denied tools get denial results, and
@@ -1784,7 +1796,30 @@ export class WorkflowAgent<
         if (approval.providerExecuted) {
           continue;
         }
-        const tool = (this.tools as ToolSet)[approval.toolName];
+        const tool = Object.prototype.hasOwnProperty.call(
+          effectiveTools,
+          approval.toolName,
+        )
+          ? (effectiveTools as ToolSet)[approval.toolName]
+          : undefined;
+        if (tool == null && effectiveActiveTools !== undefined) {
+          toolResultContent.push({
+            type: 'tool-result' as const,
+            toolCallId: approval.toolCallId,
+            toolName: approval.toolName,
+            output: await createLanguageModelToolResultOutput({
+              toolCallId: approval.toolCallId,
+              toolName: approval.toolName,
+              input: approval.input,
+              output: `Tool "${approval.toolName}" is not an active tool`,
+              tool: undefined,
+              errorMode: 'text',
+              supportedUrls: {},
+              download,
+            }),
+          });
+          continue;
+        }
         if (tool && typeof tool.execute === 'function') {
           if (!tool.needsApproval) {
             const reason = `Tool "${approval.toolName}" does not require approval`;
@@ -1825,6 +1860,7 @@ export class WorkflowAgent<
               await validateApprovedToolApprovals({
                 approvedToolApprovals: [approval.collected],
                 tools: this.tools as ToolSet,
+                activeTools: effectiveActiveTools as ActiveTools<ToolSet>,
                 toolApproval: undefined,
                 messages: prompt.messages,
                 toolsContext:
@@ -1870,7 +1906,7 @@ export class WorkflowAgent<
               toolName: approval.toolName,
               input: approval.input,
             },
-            this.tools as ToolSet,
+            effectiveTools as ToolSet,
             prompt.messages as unknown as LanguageModelV4Prompt,
             effectiveToolsContext,
             0,
@@ -2040,15 +2076,6 @@ export class WorkflowAgent<
     // Determine effective tool choice
     const effectiveToolChoice = effectiveToolChoiceFromPrepare;
 
-    // Filter tools if activeTools is specified (stream-level overrides constructor default)
-    const effectiveActiveTools = effectiveActiveToolsFromPrepare;
-    const effectiveTools =
-      effectiveActiveTools !== undefined
-        ? (filterActiveTools({
-            tools: this.tools,
-            activeTools: effectiveActiveTools,
-          }) ?? this.tools)
-        : this.tools;
     const effectiveModelInfo = getModelInfo(effectiveModel);
 
     // Initialize context
