@@ -224,6 +224,23 @@ function parseEnvList(value: string | undefined): string[] | undefined {
   return items.length > 0 ? items : undefined;
 }
 
+/*
+ * The start config files live in the sandbox, where the agent can read them.
+ * Request headers and runtime environment variables can carry credentials, so
+ * they are never written to disk.
+ */
+function redactPersistedStart(start: unknown): unknown {
+  if (start == null || typeof start !== 'object' || Array.isArray(start)) {
+    return start;
+  }
+  const {
+    headers: _headers,
+    env: _env,
+    ...rest
+  } = start as Record<string, unknown>;
+  return rest;
+}
+
 const ENV_TRUTHY = new Set(['1', 'true', 'yes', 'on']);
 
 /**
@@ -566,7 +583,7 @@ export async function runBridge<TStart extends { type: 'start' }>(
 
   const writeStartConfig = async (start: unknown): Promise<void> => {
     try {
-      const serialized = JSON.stringify(start);
+      const serialized = JSON.stringify(redactPersistedStart(start));
       await writeFile(startConfigPath, serialized);
       // Frozen copy: written once, restored over start-config.json by future
       // rerun-mode recovery to re-run the original turn from scratch.
