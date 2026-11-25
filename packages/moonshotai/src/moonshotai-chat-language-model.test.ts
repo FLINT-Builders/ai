@@ -430,44 +430,30 @@ describe('doGenerate', () => {
       prepareJsonFixtureResponse('moonshotai-text');
     });
 
-    it.each([
-      {
-        mediaType: 'image',
-        content: {
-          type: 'image_url',
-          image_url: { url: 'ms://file-image' },
-        },
-      },
-      {
-        mediaType: 'video',
-        content: {
-          type: 'video_url',
-          video_url: { url: 'ms://file-video' },
-        },
-      },
-    ] as const)(
-      'should send ms:// references with top-level $mediaType media types',
-      async ({ mediaType, content }) => {
-        await provider.chatModel('kimi-k3').doGenerate({
-          prompt: [
-            {
-              role: 'user',
-              content: [
-                {
-                  type: 'file',
-                  data: {
-                    type: 'url' as const,
-                    url: new URL(`ms://file-${mediaType}`),
+    it.each(['image', 'video'] as const)(
+      'should not send ms:// file part URLs with top-level %s media types',
+      async mediaType => {
+        await expect(
+          provider.chatModel('kimi-k3').doGenerate({
+            prompt: [
+              {
+                role: 'user',
+                content: [
+                  {
+                    type: 'file',
+                    data: {
+                      type: 'url' as const,
+                      url: new URL(`ms://file-${mediaType}`),
+                    },
+                    mediaType,
                   },
-                  mediaType,
-                },
-              ],
-            },
-          ],
-        });
+                ],
+              },
+            ],
+          }),
+        ).rejects.toSatisfy(UnsupportedFunctionalityError.isInstance);
 
-        const requestBody = await server.calls[0].requestBodyJson;
-        expect(requestBody.messages[0].content).toEqual([content]);
+        expect(server.calls).toHaveLength(0);
       },
     );
 
@@ -1559,11 +1545,8 @@ describe('doGenerate', () => {
   });
 
   describe('supportedUrls', () => {
-    it('should natively support ms:// file references', () => {
-      expect(provider.chatModel('kimi-k3').supportedUrls).toEqual({
-        'image/*': [/^ms:\/\//],
-        'video/*': [/^ms:\/\//],
-      });
+    it('should not natively support any URLs', () => {
+      expect(provider.chatModel('kimi-k3').supportedUrls).toEqual({});
     });
   });
 

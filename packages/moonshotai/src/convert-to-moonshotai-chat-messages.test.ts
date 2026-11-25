@@ -434,18 +434,69 @@ describe('user messages', () => {
     ]);
   });
 
-  it('should pass through ms:// file references from the Files API', async () => {
+  it.each([
+    { mediaType: 'video/mp4', url: 'ms://file-abc123' },
+    { mediaType: 'image/png', url: 'MS://file-abc123' },
+    { mediaType: 'image', url: 'ms://files/file-abc123' },
+    { mediaType: 'video/*', url: 'ms:file-abc123' },
+  ])(
+    'should throw for ms:// Files API URLs in file part URLs ($mediaType, $url)',
+    async ({ mediaType, url }) => {
+      await expect(
+        convertMessages([
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'file',
+                data: { type: 'url' as const, url: new URL(url) },
+                mediaType,
+              },
+            ],
+          },
+        ]),
+      ).rejects.toThrow(
+        "'file part URLs with the ms: scheme (use a Moonshot provider reference for Files API files)' functionality not supported",
+      );
+    },
+  );
+
+  it('should throw for other non-http file part URL schemes', async () => {
+    await expect(
+      convertMessages([
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'file',
+              data: {
+                type: 'url' as const,
+                url: new URL('file:///etc/passwd'),
+              },
+              mediaType: 'image/png',
+            },
+          ],
+        },
+      ]),
+    ).rejects.toThrow(
+      "'file part URLs with the file: scheme (use a Moonshot provider reference for Files API files)' functionality not supported",
+    );
+  });
+
+  it('should send the URL value that was checked', async () => {
+    const url = new URL('https://example.com/image.png');
+    let reads = 0;
+    url.toString = () =>
+      reads++ === 0 ? 'https://example.com/image.png' : 'ms://file-abc123';
+
     const result = await convertMessages([
       {
         role: 'user',
         content: [
           {
             type: 'file',
-            data: {
-              type: 'url' as const,
-              url: new URL('ms://file-abc123'),
-            },
-            mediaType: 'video/mp4',
+            data: { type: 'url' as const, url },
+            mediaType: 'image/png',
           },
         ],
       },
@@ -456,56 +507,13 @@ describe('user messages', () => {
         role: 'user',
         content: [
           {
-            type: 'video_url',
-            video_url: { url: 'ms://file-abc123' },
+            type: 'image_url',
+            image_url: { url: 'https://example.com/image.png' },
           },
         ],
       },
     ]);
   });
-
-  it.each([
-    {
-      mediaType: 'image',
-      content: {
-        type: 'image_url',
-        image_url: { url: 'ms://file-image' },
-      },
-    },
-    {
-      mediaType: 'video',
-      content: {
-        type: 'video_url',
-        video_url: { url: 'ms://file-video' },
-      },
-    },
-  ] as const)(
-    'should pass through ms:// file references with top-level $mediaType media types',
-    async ({ mediaType, content }) => {
-      const result = await convertMessages([
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'file',
-              data: {
-                type: 'url' as const,
-                url: new URL(`ms://file-${mediaType}`),
-              },
-              mediaType,
-            },
-          ],
-        },
-      ]);
-
-      expect(result).toEqual([
-        {
-          role: 'user',
-          content: [content],
-        },
-      ]);
-    },
-  );
 
   it('should decode text/* file parts into text parts', async () => {
     const result = await convertMessages([
