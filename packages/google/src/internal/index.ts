@@ -1,3 +1,4 @@
+export { getModelIdPathSegment } from '../get-model-path';
 export * from '../google-language-model';
 export * from '../google-speech-model';
 export { googleTools } from '../google-tools';
