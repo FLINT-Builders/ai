@@ -223,19 +223,38 @@ bootstrap artifacts and participate in lifecycle identity. Do not include
 credentials in these strings.
 
 An install command source runs a trusted Bash command inside the harness's
-deterministic bootstrap directory:
+deterministic bootstrap directory. For agents distributed as release archives,
+`createVerifiedArchiveInstallCommand` from `@ai-sdk/harness/utils` builds a
+command that downloads a pinned archive for the sandbox platform, verifies its
+SHA-256 digest against the value in your code, and only then extracts it and
+links the executable into `$HOME/.local/bin`:
 
 ```ts
-const cursorSource = {
-  type: 'install-command',
-  command: 'curl https://cursor.com/install -fsS | bash',
-} as const;
+import { createVerifiedArchiveInstallCommand } from '@ai-sdk/harness/utils';
 
-const fxSource = {
+const source = {
   type: 'install-command',
-  command: 'curl -fsSL https://fx.sh/setup.sh | bash',
+  command: createVerifiedArchiveInstallCommand({
+    archives: {
+      'linux-x64': {
+        url: 'https://downloads.example.com/agent/1.2.3/linux-x64.tar.gz',
+        sha256: '<sha256 of linux-x64.tar.gz>',
+      },
+      'linux-arm64': {
+        url: 'https://downloads.example.com/agent/1.2.3/linux-arm64.tar.gz',
+        sha256: '<sha256 of linux-arm64.tar.gz>',
+      },
+    },
+    installDir: '.local/share/example-agent/versions/1.2.3',
+    stripComponents: 1,
+    executables: { 'example-agent': 'bin/example-agent' },
+  }),
 } as const;
 ```
+
+Do not pipe an unversioned remote installer into a shell: whatever the server
+returns at bootstrap time runs inside the sandbox with access to the workspace
+and any forwarded credentials.
 
 The command runs with `set -euo pipefail`, with its working directory set to
 `.harness-bootstrap/<harnessId>/implementation` and `HOME` set to the `home`
@@ -244,7 +263,8 @@ below that `HOME`. The command must install `executable` into
 `$HOME/.local/bin`; the adapter launches that deterministic path without a
 shell and does not fall back to a command already present in the sandbox.
 
-Install commands do not provide automatic version pinning. A successful
+Install commands do not provide automatic version pinning; pin the version
+and digest in the command itself. A successful
 bootstrap remains cached, and the exact command participates in bootstrap and
 lifecycle identity. Treat the command as executable configuration and do not
 embed credentials in it because bootstrap recipes are persisted.
@@ -553,17 +573,38 @@ remains unchanged.
 
 ### Cursor ACP
 
-Cursor exposes ACP through `agent acp` and installs its CLI with a Bash
-installer rather than an NPM package:
+Cursor exposes ACP through `agent acp` and distributes its CLI as versioned
+release archives rather than an NPM package. Pin a release and the SHA-256
+digest of each platform archive:
 
 ```ts
+import { createVerifiedArchiveInstallCommand } from '@ai-sdk/harness/utils';
 import { createACP } from '@ai-sdk/harness-acp';
+
+const cursorCLIVersion = '2026.11.22-e9042b2';
+const cursorCLIDownloadURL = `https://downloads.cursor.com/lab/${cursorCLIVersion}`;
 
 export const cursorACPHarness = createACP({
   harnessId: 'cursor-acp',
   source: {
     type: 'install-command',
-    command: 'curl https://cursor.com/install -fsS | bash',
+    command: createVerifiedArchiveInstallCommand({
+      archives: {
+        'linux-x64': {
+          url: `${cursorCLIDownloadURL}/linux/x64/agent-cli-package.tar.gz`,
+          sha256:
+            '7663b1c5d1b56e095ef8e23bef38d66df6cfd665c4873470214e0e411f0f97b3',
+        },
+        'linux-arm64': {
+          url: `${cursorCLIDownloadURL}/linux/arm64/agent-cli-package.tar.gz`,
+          sha256:
+            '7b7dd0020fb9a2a9e1e7e3f39e2f9f512d1dd9577174ecda8aa82ac31dbc9565',
+        },
+      },
+      installDir: `.local/share/cursor-agent/versions/${cursorCLIVersion}`,
+      stripComponents: 1,
+      executables: { agent: 'cursor-agent' },
+    }),
   },
   executable: 'agent',
   args: ['--disable-auto-update', 'acp'],

@@ -23,7 +23,7 @@ describe('createCursor', () => {
       version: settings.version,
       harnessId: settings.harnessId,
       clientApp: settings.clientApp,
-      source: settings.source,
+      source: settings.source.type,
       executable: settings.executable,
       args: settings.args,
       credentialEnv: settings.credentialEnv,
@@ -79,10 +79,7 @@ describe('createCursor', () => {
         "executable": "agent",
         "harnessId": "cursor",
         "providerAuthentication": undefined,
-        "source": {
-          "command": "curl https://cursor.com/install -fsS | bash",
-          "type": "install-command",
-        },
+        "source": "install-command",
         "version": "v1",
       }
     `);
@@ -118,6 +115,33 @@ describe('createCursor', () => {
     expect(settings.clientCapabilities).toEqual({
       _meta: { parameterizedModelPicker: true },
     });
+  });
+
+  it('installs a pinned Cursor CLI archive verified by SHA-256', () => {
+    createCursor();
+
+    const settings = mocks.createACP.mock.calls[0]?.[0] as ACPHarnessSettings;
+    if (settings.source.type !== 'install-command') {
+      throw new Error('Expected an install-command source.');
+    }
+    const { command } = settings.source;
+    expect(command).not.toContain('cursor.com/install');
+    expect(command).not.toMatch(/\|\s*(ba)?sh\b/);
+    for (const platform of [
+      'linux/x64',
+      'linux/arm64',
+      'darwin/x64',
+      'darwin/arm64',
+    ]) {
+      expect(command).toMatch(
+        new RegExp(
+          `archive_url='https://downloads\\.cursor\\.com/lab/\\d{4}\\.\\d{2}\\.\\d{2}-[0-9a-f]+/${platform}/agent-cli-package\\.tar\\.gz'; archive_sha256='[0-9a-f]{64}'`,
+        ),
+      );
+    }
+    expect(command).toContain(
+      `ln -sfn "$install_dir/"'cursor-agent' "$HOME/.local/bin/"'agent'`,
+    );
   });
 
   it('forwards user-configurable settings', () => {

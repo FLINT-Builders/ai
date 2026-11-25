@@ -26,7 +26,7 @@ describe('createFx', () => {
       version: settings.version,
       harnessId: settings.harnessId,
       clientApp: settings.clientApp,
-      source: settings.source,
+      source: settings.source.type,
       executable: settings.executable,
       args: settings.args,
       credentialEnv: settings.credentialEnv,
@@ -226,13 +226,38 @@ describe('createFx', () => {
             },
           },
         },
-        "source": {
-          "command": "curl -fsSL https://fx.sh/setup.sh | bash",
-          "type": "install-command",
-        },
+        "source": "install-command",
         "version": "v1",
       }
     `);
+  });
+
+  it('installs a pinned fx archive verified by SHA-256', () => {
+    createFx();
+
+    const settings = mocks.createACP.mock.calls[0]?.[0] as ACPHarnessSettings;
+    if (settings.source.type !== 'install-command') {
+      throw new Error('Expected an install-command source.');
+    }
+    const { command } = settings.source;
+    expect(command).not.toContain('fx.sh/setup.sh');
+    expect(command).not.toContain('latest');
+    expect(command).not.toMatch(/\|\s*(ba)?sh\b/);
+    for (const platform of [
+      'linux-x86_64',
+      'linux-aarch64',
+      'macos-x86_64',
+      'macos-aarch64',
+    ]) {
+      expect(command).toMatch(
+        new RegExp(
+          `archive_url='https://releases\\.fx\\.sh/v\\d+\\.\\d+\\.\\d+/fx-${platform}\\.tar\\.gz'; archive_sha256='[0-9a-f]{64}'`,
+        ),
+      );
+    }
+    expect(command).toContain(
+      `ln -sfn "$install_dir/"'fx' "$HOME/.local/bin/"'fx'`,
+    );
   });
 
   it('forwards user-configurable settings', () => {

@@ -39,6 +39,12 @@ export {
 export { resolveSandboxHomeDir } from './sandbox-home-dir';
 export { shellQuote } from './shell-quote';
 export {
+  createVerifiedArchiveInstallCommand,
+  type VerifiedArchive,
+  type VerifiedArchiveInstallCommandOptions,
+  type VerifiedArchivePlatform,
+} from './verified-archive-install-command';
+export {
   writeInstructions,
   type WriteInstructionsOptions,
   type WriteInstructionsResult,
