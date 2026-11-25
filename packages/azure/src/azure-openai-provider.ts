@@ -183,6 +183,19 @@ function getAzureOpenAIBaseURLInfo(baseURL: string | undefined) {
   };
 }
 
+function toDeploymentPathSegment(deploymentId: string): string {
+  // `.` and `..` survive encodeURIComponent and are resolved as dot segments.
+  if (deploymentId === '' || deploymentId === '.' || deploymentId === '..') {
+    throw new InvalidArgumentError({
+      argument: 'deploymentId',
+      message:
+        'The Azure OpenAI deployment name must be a single path segment.',
+    });
+  }
+
+  return encodeURIComponent(deploymentId);
+}
+
 /**
  * Create an Azure OpenAI provider instance.
  */
@@ -257,7 +270,9 @@ export function createAzure(
     let fullUrl: URL;
     if (options.useDeploymentBasedUrls) {
       // Use deployment-based format for compatibility with certain Azure OpenAI models
-      fullUrl = new URL(`${baseUrlPrefix}/deployments/${modelId}${path}`);
+      fullUrl = new URL(
+        `${baseUrlPrefix}/deployments/${toDeploymentPathSegment(modelId)}${path}`,
+      );
     } else if (!isAzureOpenAI || isAzureOpenAIVersioned) {
       // Custom gateways can own Azure routing and versioning themselves.
       // Complete Azure OpenAI v1 URLs also own their versioning.
