@@ -1,3 +1,4 @@
+import { InvalidArgumentError } from '@ai-sdk/provider';
 import {
   createJsonErrorResponseHandler,
   isSameOrigin,
@@ -33,6 +34,43 @@ export const bflFailedResponseHandler = createJsonErrorResponseHandler({
   errorToMessage: error =>
     bflErrorToMessage(error) ?? 'Unknown Black Forest Labs error',
 });
+
+/**
+ * Builds the credentialed endpoint URL for a model. The model id must be a
+ * single path segment under the base URL: ids containing any character that
+ * `encodeURIComponent` would escape (path, query, and fragment delimiters,
+ * backslashes, percent signs, whitespace) or that are dot segments are
+ * rejected, so the API key is never sent to another path or query.
+ */
+export function getModelUrl({
+  baseURL,
+  modelId,
+}: {
+  baseURL: string;
+  modelId: string;
+}): string {
+  let encoded: string | undefined;
+  try {
+    encoded = encodeURIComponent(modelId);
+  } catch {
+    encoded = undefined;
+  }
+
+  if (
+    encoded == null ||
+    encoded !== modelId ||
+    modelId === '' ||
+    modelId === '.' ||
+    modelId === '..'
+  ) {
+    throw new InvalidArgumentError({
+      argument: 'modelId',
+      message: `Invalid Black Forest Labs model id: ${JSON.stringify(modelId)}. Model ids must be a single URL path segment.`,
+    });
+  }
+
+  return `${baseURL}/${modelId}`;
+}
 
 /**
  * Black Forest Labs returns response-supplied URLs (polling and delivery) on

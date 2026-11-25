@@ -27,6 +27,7 @@ import {
 import { z } from 'zod/v4';
 import {
   bflFailedResponseHandler,
+  getModelUrl,
   isTrustedUrl,
 } from './black-forest-labs-api';
 import {
@@ -548,6 +549,10 @@ export class BlackForestLabsVideoModel implements VideoModelV4 {
   async doStart(
     options: Parameters<NonNullable<VideoModelV4['doStart']>>[0],
   ): Promise<VideoModelV4OperationStartResult> {
+    const url = getModelUrl({
+      baseURL: this.config.baseURL,
+      modelId: this.modelId,
+    });
     const { body, warnings } = await this.getArgs(options);
 
     const currentDate = this.config._internal?.currentDate?.() ?? new Date();
@@ -557,7 +562,7 @@ export class BlackForestLabsVideoModel implements VideoModelV4 {
     );
 
     const { value: submit, responseHeaders } = await postJsonToApi({
-      url: `${this.config.baseURL}/${this.modelId}`,
+      url,
       headers: combinedHeaders,
       body,
       failedResponseHandler: bflFailedResponseHandler,
