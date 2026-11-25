@@ -219,6 +219,8 @@ This package only maps the resulting decision to the SDK's approval status. The 
 
 Do not ship a new policy straight to enforce. The first version almost always denies things you did not mean to. `shadow(approval, opts)` evaluates the policy and reports the decision via `onDecision`, but tells the SDK every call is approved until you flip `enforce: true`.
 
+`shadow` never weakens a tool's own `needsApproval`. In shadow mode, a tool whose `needsApproval` requires approval still waits for a human. With `enforce: true`, any call the policy has no opinion on (`undefined` or `not-applicable`) is decided by the tool's `needsApproval`, the same as without the wrapper.
+
 ```ts
 import { opaPolicy, shadow, wasmPolicyClient } from '@ai-sdk/policy-opa';
 
@@ -324,6 +326,7 @@ Defaults for uncovered tools:
 - `'user-approval'` (default): require a human. Good when you trust the source but want a safety net.
 - `'denied'`: hard allowlist mode. The policy enumerates what is allowed; everything else is rejected.
 - `'approved'`: allow. Only when the discovery source is fully trusted.
+- `'not-applicable'`: no opinion. Uncovered tools are gated only by their own `needsApproval`.
 
 Despite the name, it works on any `Record<string, Tool>`.
 

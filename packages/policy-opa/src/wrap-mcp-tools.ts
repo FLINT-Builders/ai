@@ -85,8 +85,12 @@ export function wrapMcpTools<
       : undefined;
 
     if (configured == null) {
-      // Tool the user did not list: force it through the fallback.
-      filled[name] = fallback;
+      // Tool the user did not list: force it through the fallback. A
+      // `not-applicable` fallback is left unset: an explicit map entry is
+      // final in the SDK and would bypass the tool's own `needsApproval`.
+      if (fallback !== 'not-applicable') {
+        filled[name] = fallback;
+      }
     } else if (typeof configured === 'function') {
       // Per-tool approval function: mirror the generic-function form so a
       // "no opinion" result (`not-applicable`/`undefined`) is forced through
