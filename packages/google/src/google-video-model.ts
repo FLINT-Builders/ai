@@ -21,6 +21,7 @@ import {
   type Resolvable,
 } from '@ai-sdk/provider-utils';
 import { z } from 'zod/v4';
+import { encodeModelPathSegment } from './encode-model-path-segment';
 import { googleFailedResponseHandler } from './google-error';
 import {
   googleVideoModelOptionsSchema,
@@ -352,7 +353,7 @@ export class GoogleVideoModel implements VideoModelV4 {
       await this.buildRequest(options);
 
     const { value: operation, responseHeaders } = await postJsonToApi({
-      url: `${this.config.baseURL}/models/${this.modelId}:predictLongRunning`,
+      url: `${this.config.baseURL}/models/${encodeModelPathSegment(this.modelId)}:predictLongRunning`,
       headers: combineHeaders(
         await resolve(this.config.headers),
         options.headers,

@@ -13,6 +13,7 @@ import {
   anthropicTools,
   AnthropicLanguageModel,
 } from '@ai-sdk/anthropic/internal';
+import { encodeModelPathSegment } from '../encode-model-path-segment';
 import type { GoogleVertexAnthropicModelId } from './google-vertex-anthropic-options';
 
 type GoogleVertexAnthropicTools = Pick<
@@ -211,7 +212,7 @@ export function createGoogleVertexAnthropic(
       fetch: options.fetch,
 
       buildRequestUrl: (baseURL, isStreaming) =>
-        `${baseURL}/${modelId}:${
+        `${baseURL}/${encodeModelPathSegment(modelId)}:${
           isStreaming ? 'streamRawPredict' : 'rawPredict'
         }`,
       transformRequestBody: args => {

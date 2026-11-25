@@ -13,6 +13,7 @@ import {
   WORKFLOW_DESERIALIZE,
 } from '@ai-sdk/provider-utils';
 import { z } from 'zod/v4';
+import { encodeModelPathSegment } from './encode-model-path-segment';
 import { googleVertexFailedResponseHandler } from './google-vertex-error';
 import {
   googleVertexEmbeddingModelOptions,
@@ -100,6 +101,8 @@ export class GoogleVertexEmbeddingModel implements EmbeddingModelV4 {
       });
     }
 
+    const modelPathSegment = encodeModelPathSegment(this.modelId);
+
     const mergedHeaders = combineHeaders(
       this.config.headers ? await resolve(this.config.headers) : undefined,
       headers,
@@ -111,7 +114,7 @@ export class GoogleVertexEmbeddingModel implements EmbeddingModelV4 {
         value: response,
         rawValue,
       } = await postJsonToApi({
-        url: `${this.config.baseURL}/models/${this.modelId}:embedContent`,
+        url: `${this.config.baseURL}/models/${modelPathSegment}:embedContent`,
         headers: mergedHeaders,
         body: {
           content: { parts: [{ text: values[0] }] },
@@ -141,7 +144,7 @@ export class GoogleVertexEmbeddingModel implements EmbeddingModelV4 {
       };
     }
 
-    const url = `${this.config.baseURL}/models/${this.modelId}:predict`;
+    const url = `${this.config.baseURL}/models/${modelPathSegment}:predict`;
     const {
       responseHeaders,
       value: response,

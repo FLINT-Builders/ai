@@ -26,6 +26,10 @@ import {
   type WebSocketLike,
 } from '@ai-sdk/provider-utils';
 import { z } from 'zod/v4';
+import {
+  encodeModelPathSegment,
+  validateModelPathSegment,
+} from '../encode-model-path-segment';
 import { googleVertexFailedResponseHandler } from '../google-vertex-error';
 import {
   googleVertexGeminiTranscriptionModelOptions,
@@ -194,7 +198,7 @@ export class GoogleVertexGeminiTranscriptionModel implements TranscriptionModelV
       responseHeaders,
       rawValue: rawResponse,
     } = await postJsonToApi({
-      url: `${this.config.baseURL}/models/${this.modelId}:generateContent`,
+      url: `${this.config.baseURL}/models/${encodeModelPathSegment(this.modelId)}:generateContent`,
       headers: combineHeaders(
         this.config.headers ? await resolve(this.config.headers) : undefined,
         options.headers,
@@ -286,7 +290,7 @@ export class GoogleVertexGeminiTranscriptionModel implements TranscriptionModelV
     );
 
     const { project, location } = this.config;
-    const modelResource = `projects/${project}/locations/${location}/publishers/google/models/${this.modelId}`;
+    const modelResource = `projects/${project}/locations/${location}/publishers/google/models/${validateModelPathSegment(this.modelId)}`;
     const url = new URL(
       `wss://${vertexHost(location)}/ws/${liveWebSocketPath}`,
     );
