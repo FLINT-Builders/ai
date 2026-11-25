@@ -107,6 +107,7 @@ export interface AzureOpenAIProviderSettings {
    * Name of the Azure OpenAI resource. Either this or `baseURL` can be used.
    *
    * The resource name is used in the assembled URL: `https://{resourceName}.openai.azure.com/openai/v1{path}`.
+   * It must be a single DNS label (letters, digits, and hyphens).
    */
   resourceName?: string;
 
@@ -155,6 +156,43 @@ export interface AzureOpenAIProviderSettings {
    * `{baseURL}/v1{path}?api-version={apiVersion}`.
    */
   useDeploymentBasedUrls?: boolean;
+}
+
+const AZURE_OPENAI_RESOURCE_HOST_SUFFIX = '.openai.azure.com';
+const AZURE_OPENAI_RESOURCE_NAME_PATTERN =
+  /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i;
+
+/**
+ * The resource name selects the host that receives the credentials, so it
+ * must be a single DNS label under `.openai.azure.com`.
+ */
+function getAzureOpenAIResourceBaseURL(resourceName: string): string {
+  const invalidResourceName = () =>
+    new InvalidArgumentError({
+      argument: 'resourceName',
+      message:
+        'The Azure OpenAI resource name must be a single DNS label (letters, digits, and hyphens).',
+    });
+
+  if (!AZURE_OPENAI_RESOURCE_NAME_PATTERN.test(resourceName)) {
+    throw invalidResourceName();
+  }
+
+  const expectedHostname = `${resourceName.toLowerCase()}${AZURE_OPENAI_RESOURCE_HOST_SUFFIX}`;
+  const url = new URL(`https://openai.azure.com/openai`);
+  url.hostname = expectedHostname;
+
+  if (
+    url.hostname !== expectedHostname ||
+    url.protocol !== 'https:' ||
+    url.username !== '' ||
+    url.password !== '' ||
+    url.port !== ''
+  ) {
+    throw invalidResourceName();
+  }
+
+  return url.toString();
 }
 
 function getAzureOpenAIBaseURLInfo(baseURL: string | undefined) {
@@ -234,25 +272,28 @@ export function createAzure(
       }
     : options.fetch;
 
-  const getResourceName = () =>
-    loadSetting({
-      settingValue: options.resourceName,
-      settingName: 'resourceName',
-      environmentVariableName: 'AZURE_RESOURCE_NAME',
-      description: 'Azure OpenAI resource name',
-    });
+  const baseURL = options.baseURL;
+  const resourceNameSetting = options.resourceName;
+
+  const getResourceBaseURL = () =>
+    getAzureOpenAIResourceBaseURL(
+      loadSetting({
+        settingValue: resourceNameSetting,
+        settingName: 'resourceName',
+        environmentVariableName: 'AZURE_RESOURCE_NAME',
+        description: 'Azure OpenAI resource name',
+      }),
+    );
 
   const apiVersion = options.apiVersion ?? 'v1';
   const {
     isAzureOpenAI,
     isFoundryProject,
     isVersioned: isAzureOpenAIVersioned,
-  } = getAzureOpenAIBaseURLInfo(options.baseURL);
+  } = getAzureOpenAIBaseURLInfo(baseURL);
 
   const url = ({ path, modelId }: { path: string; modelId: string }) => {
-    const baseUrlPrefix = withoutTrailingSlash(
-      options.baseURL ?? `https://${getResourceName()}.openai.azure.com/openai`,
-    );
+    const baseUrlPrefix = withoutTrailingSlash(baseURL ?? getResourceBaseURL());
 
     let fullUrl: URL;
     if (options.useDeploymentBasedUrls) {
