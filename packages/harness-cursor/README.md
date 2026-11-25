@@ -38,7 +38,7 @@ try {
 }
 ```
 
-The adapter installs Cursor CLI inside the sandbox with Cursor's official installer. The sandbox must provide network access and at least one exposed TCP port.
+The adapter installs a pinned Cursor CLI release inside the sandbox and verifies its SHA-256 digest before unpacking it. The sandbox must provide network access and at least one exposed TCP port.
 
 Cursor controls model-provider authentication in its own settings. For AI Gateway, configure Cursor's OpenAI API key with an AI Gateway key and set **Override OpenAI Base URL** to `https://ai-gateway.vercel.sh/cursor/v1`. The `auth` setting accepts the shared ACP modes `auto`, `direct`, and `ai-gateway`; explicit `direct` and `ai-gateway` values emit a configuration reminder, while `auto` does not. The setting cannot change Cursor's account configuration.
 

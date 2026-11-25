@@ -226,16 +226,21 @@ An install command source runs a trusted Bash command inside the harness's
 deterministic bootstrap directory:
 
 ```ts
-const cursorSource = {
-  type: 'install-command',
-  command: 'curl https://cursor.com/install -fsS | bash',
-} as const;
-
 const fxSource = {
   type: 'install-command',
-  command: 'curl -fsSL https://fx.sh/setup.sh | bash',
+  command: [
+    'curl -fsSL https://releases.fx.sh/v0.0.18/fx-linux-x86_64.tar.gz -o fx.tar.gz',
+    'echo "e4912040c1fb2a1cda4162fd8f40fc66aa80a1a0a306af6332b5426bdcac99b6  fx.tar.gz" | sha256sum -c -',
+    'tar -xzf fx.tar.gz -C "$HOME/.local/bin" fx',
+    'rm fx.tar.gz',
+  ].join('\n'),
 } as const;
 ```
+
+Pin the artifact you install and verify its digest before you unpack or run
+it. Do not pipe a live installer URL into `bash`: whoever controls the bytes
+served at that URL gets code execution in every sandbox that bootstraps the
+harness, along with access to its workspace and forwarded credentials.
 
 The command runs with `set -euo pipefail`, with its working directory set to
 `.harness-bootstrap/<harnessId>/implementation` and `HOME` set to the `home`
@@ -244,7 +249,8 @@ below that `HOME`. The command must install `executable` into
 `$HOME/.local/bin`; the adapter launches that deterministic path without a
 shell and does not fall back to a command already present in the sandbox.
 
-Install commands do not provide automatic version pinning. A successful
+Install commands do not provide automatic version pinning or integrity
+checks; the command is responsible for both. A successful
 bootstrap remains cached, and the exact command participates in bootstrap and
 lifecycle identity. Treat the command as executable configuration and do not
 embed credentials in it because bootstrap recipes are persisted.

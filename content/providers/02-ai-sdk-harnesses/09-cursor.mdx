@@ -23,8 +23,9 @@ Create a Cursor user API key and set `CURSOR_API_KEY`. The key authenticates
 Cursor CLI in the sandbox regardless of how Cursor authenticates to the model
 provider.
 
-The adapter installs Cursor CLI inside the sandbox with the official Cursor
-install command when the first session starts.
+The adapter installs a pinned Cursor CLI release inside the sandbox when the
+first session starts. It downloads the release package from Cursor's download
+host and verifies its SHA-256 digest before unpacking it.
 
 ## Import
 
@@ -162,7 +163,7 @@ const sandbox = createVercelSandbox({
 });
 ```
 
-The first session requires network egress to run Cursor's official installer.
+The first session requires network egress to download the pinned Cursor CLI package.
 
 ## Built-in Tools
 
