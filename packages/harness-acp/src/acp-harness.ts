@@ -100,6 +100,7 @@ const ACP_BUILTIN_TOOLS = {} as const satisfies ToolSet;
 const acpBridgeCoordsSchema = z.object({
   port: z.number(),
   token: z.string(),
+  hostLease: z.string().optional(),
   lastSeenEventId: z.number(),
   sandboxId: z.string().optional(),
   stateDir: z.string().optional(),

@@ -30,6 +30,7 @@ import {
   drainBridgeProcessStream,
   forwardBridgeProcessStream,
   getRestrictedSandboxSession,
+  hashBridgeToken,
   markBridgeStarting,
   resolveSandboxDefaultWorkingDirectory,
   resolveSandboxHomeDir,
@@ -177,6 +178,7 @@ const CODEX_BUILTIN_TOOLS = {
 const codexBridgeCoordsSchema = z.object({
   port: z.number(),
   token: z.string(),
+  hostLease: z.string().optional(),
   lastSeenEventId: z.number(),
   sandboxId: z.string().optional(),
 });
@@ -380,6 +382,7 @@ export function createCodex(
             connect: () => openWebSocket(attachEndpoint),
             outboundSchema: outboundMessageSchema,
             initialLastSeenEventId: coords.lastSeenEventId,
+            initialHostLease: coords.hostLease,
             onDiagnostic,
             onBridgeError,
             reconnect: settings.reconnect,
@@ -466,8 +469,7 @@ export function createCodex(
       const env = {
         ...forwardedAuthEnvironment,
         AI_SDK_HARNESS_CLIENT_APP: CODEX_CLIENT_APP,
-        BRIDGE_CHANNEL_TOKEN: token,
-        BRIDGE_WS_PORT: String(port),
+        BRIDGE_CHANNEL_TOKEN_SHA256: hashBridgeToken(token),
         ...(respawnStrategy === 'replay'
           ? { BRIDGE_REPLAY_FROM_DISK: '1' }
           : {}),
@@ -488,7 +490,7 @@ export function createCodex(
       });
 
       const proc = await toolSafeSandboxSession.spawn({
-        command: `node ${shellQuote(`${bootstrapDir}/bridge.mjs`)} --workdir ${shellQuote(workDir)} --bridge-state-dir ${shellQuote(bridgeStateDir)} --cli-shim-dir ${shellQuote(cliShimDir)}`,
+        command: `node ${shellQuote(`${bootstrapDir}/bridge.mjs`)} --workdir ${shellQuote(workDir)} --bridge-state-dir ${shellQuote(bridgeStateDir)} --cli-shim-dir ${shellQuote(cliShimDir)} --port ${shellQuote(String(port))}`,
         env,
         abortSignal: startOpts.abortSignal,
       });
@@ -1137,6 +1139,9 @@ function createSession({
           bridge: {
             port: bridgePort,
             token: bridgeToken,
+            ...(channel.hostLease == null
+              ? {}
+              : { hostLease: channel.hostLease }),
             lastSeenEventId,
             ...(sandboxId == null ? {} : { sandboxId }),
           },
@@ -1299,6 +1304,9 @@ function createSession({
           bridge: {
             port: bridgePort,
             token: bridgeToken,
+            ...(channel.hostLease == null
+              ? {}
+              : { hostLease: channel.hostLease }),
             lastSeenEventId,
             ...(sandboxId == null ? {} : { sandboxId }),
           },

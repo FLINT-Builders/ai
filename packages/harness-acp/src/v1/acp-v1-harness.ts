@@ -31,6 +31,7 @@ import {
   shellQuote,
   warnCredentialBrokeringUnavailable,
   waitForBridgeReady,
+  hashBridgeToken,
   withBridgeToken,
   writeInstructions,
   writeSkills,
@@ -447,6 +448,7 @@ export function createACPV1<TBuiltinTools extends ToolSet = {}>({
               connect: () => openWebSocket(attachEndpoint),
               outboundSchema: outboundMessageSchema,
               initialLastSeenEventId: coords.lastSeenEventId,
+              initialHostLease: coords.hostLease,
               onDiagnostic,
               onBridgeError,
               reconnect,
@@ -652,7 +654,7 @@ export function createACPV1<TBuiltinTools extends ToolSet = {}>({
             hostToolMcpTransport: settings.hostToolMcpTransport,
           }),
           ...sandboxProviderAuthenticationEnvironment,
-          BRIDGE_CHANNEL_TOKEN: token,
+          BRIDGE_CHANNEL_TOKEN_SHA256: hashBridgeToken(token),
           BRIDGE_WS_PORT: String(port),
           ...(respawnStrategy?.mode === 'disk-replay'
             ? {
@@ -1897,6 +1899,9 @@ function createSession({
           bridge: {
             port: bridgePort,
             token: bridgeToken,
+            ...(channel.hostLease == null
+              ? {}
+              : { hostLease: channel.hostLease }),
             lastSeenEventId,
             ...(sandboxId == null ? {} : { sandboxId }),
             stateDir: bridgeStateDir,
@@ -1925,6 +1930,9 @@ function createSession({
           bridge: {
             port: bridgePort,
             token: bridgeToken,
+            ...(channel.hostLease == null
+              ? {}
+              : { hostLease: channel.hostLease }),
             lastSeenEventId,
             ...(sandboxId == null ? {} : { sandboxId }),
             stateDir: bridgeStateDir,

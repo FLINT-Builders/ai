@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type {
   HarnessV1NetworkSandboxSession,
   HarnessV1PortEndpoint,
@@ -254,7 +255,9 @@ describe('createDeepAgents', () => {
     expect(spawnEnvs.at(0)?.AI_SDK_HARNESS_CLIENT_APP).toBe(
       'ai-sdk/harness-deepagents/0.0.0-test',
     );
-    expect(spawnEnvs.at(0)?.BRIDGE_CHANNEL_TOKEN).toMatch(/^[a-f0-9]{64}$/);
+    expect(spawnEnvs.at(0)?.BRIDGE_CHANNEL_TOKEN_SHA256).toMatch(
+      /^[a-f0-9]{64}$/,
+    );
     expect(spawns.at(0)).toContain(
       "node '/vercel/sandbox/.harness-bootstrap/deepagents/bridge.mjs'",
     );
@@ -550,8 +553,8 @@ describe('createDeepAgents', () => {
     });
 
     expect(mintBridgeToken).toHaveBeenCalledExactlyOnceWith('test-sandbox');
-    expect(spawnEnvs.at(0)?.BRIDGE_CHANNEL_TOKEN).toBe(
-      'token-for-test-sandbox',
+    expect(spawnEnvs.at(0)?.BRIDGE_CHANNEL_TOKEN_SHA256).toBe(
+      createHash('sha256').update('token-for-test-sandbox').digest('hex'),
     );
 
     const resumeFrom = await session.doDetach();

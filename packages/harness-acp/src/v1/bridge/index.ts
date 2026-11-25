@@ -824,6 +824,7 @@ function createChildEnvironment({
 }): NodeJS.ProcessEnv {
   const blocked = new Set([
     'BRIDGE_CHANNEL_TOKEN',
+    'BRIDGE_CHANNEL_TOKEN_SHA256',
     'BRIDGE_WS_PORT',
     'AI_SDK_ACP_GATEWAY_API_KEY',
     'AI_SDK_ACP_GATEWAY_BASE_URL',

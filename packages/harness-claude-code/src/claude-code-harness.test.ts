@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   HarnessCapabilityUnsupportedError,
   type HarnessV1NetworkSandboxSession,
@@ -494,7 +495,9 @@ describe('createClaudeCode adapter', () => {
         CLAUDE_AGENT_SDK_CLIENT_APP: 'ai-sdk/harness-claude-code/0.0.0-test',
       },
     });
-    expect(spawnEnvs.at(0)?.BRIDGE_CHANNEL_TOKEN).toMatch(/^[a-f0-9]{64}$/);
+    expect(spawnEnvs.at(0)?.BRIDGE_CHANNEL_TOKEN_SHA256).toMatch(
+      /^[a-f0-9]{64}$/,
+    );
     await session.doDestroy();
   });
 
@@ -824,8 +827,8 @@ describe('createClaudeCode adapter', () => {
     });
 
     expect(mintBridgeToken).toHaveBeenCalledExactlyOnceWith('test-sandbox');
-    expect(spawnEnvs.at(0)?.BRIDGE_CHANNEL_TOKEN).toBe(
-      'token-for-test-sandbox',
+    expect(spawnEnvs.at(0)?.BRIDGE_CHANNEL_TOKEN_SHA256).toBe(
+      createHash('sha256').update('token-for-test-sandbox').digest('hex'),
     );
 
     const resumeFrom = await session.doDetach();

@@ -41,6 +41,7 @@ import {
   shellQuote,
   warnCredentialBrokeringUnavailable,
   waitForBridgeReady,
+  hashBridgeToken,
   withBridgeToken,
   writeSkills,
   type SandboxChannelReconnectOptions,
@@ -245,6 +246,7 @@ const OPENCODE_BUILTIN_TOOLS = {
 const openCodeBridgeCoordsSchema = z.object({
   port: z.number(),
   token: z.string(),
+  hostLease: z.string().optional(),
   lastSeenEventId: z.number(),
   sandboxId: z.string().optional(),
 });
@@ -454,6 +456,7 @@ export function createOpenCode(
               }),
             outboundSchema: outboundMessageSchema,
             initialLastSeenEventId: coords.lastSeenEventId,
+            initialHostLease: coords.hostLease,
             onDiagnostic,
             onBridgeError,
             reconnect: settings.reconnect,
@@ -549,7 +552,7 @@ export function createOpenCode(
               }),
             }),
         AI_SDK_HARNESS_CLIENT_APP: OPENCODE_CLIENT_APP,
-        BRIDGE_CHANNEL_TOKEN: token,
+        BRIDGE_CHANNEL_TOKEN_SHA256: hashBridgeToken(token),
         BRIDGE_WS_PORT: String(port),
         ...(respawnStrategy === 'replay'
           ? { BRIDGE_REPLAY_FROM_DISK: '1' }
@@ -1205,6 +1208,9 @@ function createSession({
           bridge: {
             port: bridgePort,
             token: bridgeToken,
+            ...(channel.hostLease == null
+              ? {}
+              : { hostLease: channel.hostLease }),
             lastSeenEventId,
             ...(sandboxId == null ? {} : { sandboxId }),
           },
@@ -1334,6 +1340,9 @@ function createSession({
           bridge: {
             port: bridgePort,
             token: bridgeToken,
+            ...(channel.hostLease == null
+              ? {}
+              : { hostLease: channel.hostLease }),
             lastSeenEventId,
             ...(sandboxId == null ? {} : { sandboxId }),
           },

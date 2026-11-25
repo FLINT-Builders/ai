@@ -177,6 +177,7 @@ describe('SandboxChannel ↔ runBridge reconnect', () => {
       connect,
       outboundSchema,
       initialLastSeenEventId: cursor,
+      initialHostLease: channelA.hostLease,
     });
     cleanups.push(() => channelB.close());
     const deltasB: string[] = [];

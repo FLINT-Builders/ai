@@ -34,6 +34,7 @@ import {
   shellQuote,
   warnCredentialBrokeringUnavailable,
   waitForBridgeReady,
+  hashBridgeToken,
   withBridgeToken,
   writeSkills,
   type SandboxChannelReconnectOptions,
@@ -201,6 +202,7 @@ const DEEPAGENTS_BUILTIN_TOOLS = {
 const deepAgentsBridgeCoordsSchema = z.object({
   port: z.number(),
   token: z.string(),
+  hostLease: z.string().optional(),
   lastSeenEventId: z.number(),
   sandboxId: z.string().optional(),
 });
@@ -344,6 +346,7 @@ export function createDeepAgents(
             connect: () => openWebSocket(attachEndpoint),
             outboundSchema: outboundMessageSchema,
             initialLastSeenEventId: coords.lastSeenEventId,
+            initialHostLease: coords.hostLease,
             onDiagnostic,
             onBridgeError,
             reconnect: settings.reconnect,
@@ -402,7 +405,7 @@ export function createDeepAgents(
       const env = {
         ...forwardedAuthEnvironment,
         AI_SDK_HARNESS_CLIENT_APP: DEEPAGENTS_CLIENT_APP,
-        BRIDGE_CHANNEL_TOKEN: token,
+        BRIDGE_CHANNEL_TOKEN_SHA256: hashBridgeToken(token),
         BRIDGE_WS_PORT: String(port),
       };
 
@@ -844,6 +847,9 @@ function createSession({
           bridge: {
             port: bridgePort,
             token: bridgeToken,
+            ...(channel.hostLease == null
+              ? {}
+              : { hostLease: channel.hostLease }),
             lastSeenEventId,
             ...(sandboxId == null ? {} : { sandboxId }),
           },
@@ -871,6 +877,9 @@ function createSession({
           bridge: {
             port: bridgePort,
             token: bridgeToken,
+            ...(channel.hostLease == null
+              ? {}
+              : { hostLease: channel.hostLease }),
             lastSeenEventId,
             ...(sandboxId == null ? {} : { sandboxId }),
           },

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   commonTool,
   HarnessCapabilityUnsupportedError,
@@ -1917,8 +1918,8 @@ describe('createACP', () => {
       "--implementation-dir '/workspace/.harness-bootstrap/codex-acp/implementation'",
     );
     expect(spawns[0].env.CODEX_API_KEY).toBe('test-key');
-    expect(spawns[0].env.BRIDGE_CHANNEL_TOKEN).toMatch(/^[a-f0-9]{64}$/);
-    expect(spawns[0].env.BRIDGE_CHANNEL_TOKEN).not.toBe('test-key');
+    expect(spawns[0].env.BRIDGE_CHANNEL_TOKEN_SHA256).toMatch(/^[a-f0-9]{64}$/);
+    expect(spawns[0].env.BRIDGE_CHANNEL_TOKEN_SHA256).not.toBe('test-key');
     expect(spawns[0].env.AI_SDK_ACP_GATEWAY_API_KEY).toBeUndefined();
     expect(spawns[0].env.AI_SDK_ACP_CLIENT_APP_NAME).toBe('ai-sdk/harness-acp');
     expect(spawns[0].env.AI_SDK_ACP_CLIENT_APP_VERSION).toBe('0.0.0-test');
@@ -2053,7 +2054,9 @@ describe('createACP', () => {
     });
 
     expect(mintBridgeToken).toHaveBeenCalledExactlyOnceWith('sandbox-1');
-    expect(spawns[0].env.BRIDGE_CHANNEL_TOKEN).toBe('token-for-sandbox-1');
+    expect(spawns[0].env.BRIDGE_CHANNEL_TOKEN_SHA256).toBe(
+      createHash('sha256').update('token-for-sandbox-1').digest('hex'),
+    );
 
     const resumeFrom = await session.doDetach();
     expect(resumeFrom.data).toMatchObject({
@@ -4500,7 +4503,7 @@ describe('createACP', () => {
     );
     expect(spawns[0].env.AI_SDK_ACP_CLIENT_APP_NAME).toBe('custom-client');
     expect(spawns[0].env.AI_SDK_ACP_CLIENT_APP_VERSION).toBe('1.2.3');
-    expect(spawns[0].env.BRIDGE_CHANNEL_TOKEN).not.toBe('gateway-key');
+    expect(spawns[0].env.BRIDGE_CHANNEL_TOKEN_SHA256).not.toBe('gateway-key');
     expect(spawns[0].env.CODEX_API_KEY).toBeUndefined();
 
     await session.doDestroy();

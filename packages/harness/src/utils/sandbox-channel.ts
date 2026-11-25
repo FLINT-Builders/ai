@@ -67,6 +67,13 @@ export interface SandboxChannelOptions<TOut> {
    * cross-process attach handshake. Defaults to `0` (fresh session).
    */
   initialLastSeenEventId?: number;
+
+  /**
+   * Seed the bridge host lease persisted from a prior process, so this channel
+   * is authorized as a host connection to an already-running bridge. Defaults
+   * to none: a fresh bridge issues the lease in reply to the first frame.
+   */
+  initialHostLease?: string;
 }
 
 type EventTypeOf<TOut extends { type: string }> = TOut['type'];
@@ -167,6 +174,7 @@ export class SandboxChannel<
   /** Channel is fully torn down; `send` throws and `onClose` has fired. */
   private terminal = false;
   private _lastSeenEventId = 0;
+  private _hostLease: string | undefined;
   private readonly pendingSends: string[] = [];
   private dispatchChain: Promise<void> = Promise.resolve();
 
@@ -180,6 +188,16 @@ export class SandboxChannel<
     this.initialDelayMs = options.reconnect?.initialDelayMs ?? 50;
     this.maxDelayMs = options.reconnect?.maxDelayMs ?? 2_000;
     this._lastSeenEventId = options.initialLastSeenEventId ?? 0;
+    this._hostLease = options.initialHostLease;
+  }
+
+  /**
+   * Bridge host lease this channel holds, if the bridge has issued one.
+   * Persist it alongside {@link lastSeenEventId} so a future process can seed
+   * {@link SandboxChannelOptions.initialHostLease} and attach as the host.
+   */
+  get hostLease(): string | undefined {
+    return this._hostLease;
   }
 
   /**
@@ -210,6 +228,7 @@ export class SandboxChannel<
     this.wire(ws);
     this.ws = ws;
     this.connected = true;
+    this.claimHost();
     if (opts?.resume) {
       this.rawSend(
         JSON.stringify({
@@ -385,8 +404,10 @@ export class SandboxChannel<
         this.wire(ws);
         this.ws = ws;
         this.connected = true;
-        // Ask the bridge to replay everything we have not seen, then flush any
-        // host → bridge frames produced while we were disconnected.
+        // Re-authorize as the host, ask the bridge to replay everything we
+        // have not seen, then flush any host → bridge frames produced while we
+        // were disconnected.
+        this.claimHost();
         this.rawSend(
           JSON.stringify({
             type: 'resume',
@@ -418,6 +439,13 @@ export class SandboxChannel<
     }
   }
 
+  private claimHost(): void {
+    if (this._hostLease == null) return;
+    this.rawSend(
+      JSON.stringify({ type: 'claim-host', hostLease: this._hostLease }),
+    );
+  }
+
   private rawSend(text: string): void {
     if (this.connected && this.ws) {
       this.ws.send(text);
@@ -438,6 +466,16 @@ export class SandboxChannel<
 
   private async handleIncoming(text: string): Promise<void> {
     const raw = await safeParseJSON({ text });
+    if (
+      raw.success &&
+      raw.value != null &&
+      typeof raw.value === 'object' &&
+      (raw.value as { type?: unknown }).type === 'bridge-host-lease'
+    ) {
+      const hostLease = (raw.value as { hostLease?: unknown }).hostLease;
+      if (typeof hostLease === 'string') this._hostLease = hostLease;
+      return;
+    }
     let seq: number | undefined;
     if (
       raw.success &&

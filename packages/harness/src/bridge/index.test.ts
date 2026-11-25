@@ -95,6 +95,18 @@ function connect(port: number): Promise<Client> {
   return new Promise(resolve => ws.on('open', () => resolve(client)));
 }
 
+/** Authorize `other` as a host connection with the lease `host` was issued. */
+async function claimHost({
+  host,
+  other,
+}: {
+  host: Client;
+  other: Client;
+}): Promise<void> {
+  const lease = await host.waitFor(f => f.type === 'bridge-host-lease');
+  other.send({ type: 'claim-host', hostLease: lease.hostLease });
+}
+
 describe('runBridge', () => {
   it('rejects when the requested port is already in use', async () => {
     const handle = await startBridge({ onStart: async () => {} });
@@ -171,6 +183,7 @@ describe('runBridge', () => {
     release();
     await turnFinished;
 
+    await claimHost({ host: a, other: b });
     b.send({ type: 'resume', lastSeenEventId: 2 });
     await b.waitFor(f => f.seq === 4);
 
@@ -470,6 +483,7 @@ describe('runBridge', () => {
     // (turn 1's seq 1,2 were cleared at turn 2's start); seq stayed monotonic.
     const b = await connect(handle.port);
     await b.waitFor(f => f.type === 'bridge-hello');
+    await claimHost({ host: a, other: b });
     b.send({ type: 'resume', lastSeenEventId: 0 });
     await b.waitFor(f => f.seq === 4);
 
@@ -633,11 +647,13 @@ describe('runBridge', () => {
     // instead — and, with live delivery disabled there, nowhere at all.
     const b = await connect(handle.port);
     await b.waitFor(f => f.type === 'bridge-hello');
+    await claimHost({ host: a, other: b });
     b.send({ type: 'abort' });
 
     await a.waitFor(f => f.type === 'finish');
     expect(a.frames.map(f => f.type)).toEqual([
       'bridge-hello',
+      'bridge-host-lease',
       'text-delta',
       'aborted',
       'finish',
@@ -657,6 +673,7 @@ describe('runBridge', () => {
 
     const b = await connect(handle.port);
     await b.waitFor(f => f.type === 'bridge-hello');
+    await claimHost({ host: a, other: b });
     b.send({ type: 'start' });
     await b.waitFor(f => f.type === 'finish');
 
