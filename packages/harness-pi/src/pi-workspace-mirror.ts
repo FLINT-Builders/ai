@@ -28,7 +28,10 @@ import type { Experimental_SandboxSession } from '@ai-sdk/provider-utils';
  * copied as real files. `.agents/skills` is frequently a symlink to a `skills`
  * directory living elsewhere in the workspace; a mirrored symlink would dangle
  * because its target falls outside the scoped mirror, so the linked content is
- * walked and copied verbatim instead.
+ * walked and copied verbatim instead. A symlink is only followed when its
+ * resolved target stays inside the physical workspace root: Pi loads these
+ * files as instructions and skills, and the workspace tools refuse paths
+ * outside the workspace, so the mirror must not import them either.
  */
 const PI_CONFIG_DIRS = ['.pi', '.agents'] as const;
 const PI_CONTEXT_FILENAMES = ['AGENTS.md', 'AGENTS.MD'] as const;
@@ -43,10 +46,20 @@ const PI_CONTEXT_FILENAMES = ['AGENTS.md', 'AGENTS.MD'] as const;
  * MicroVM proxy long before a sync finished. Files are therefore transferred in
  * batches as a single gzipped tar archive per batch, which is one request for a
  * few hundred files instead of one request per file. Sandboxes without `tar`,
- * `gzip`, or `base64` fall back to per-file reads.
+ * `gzip`, or `realpath` stream each file of the batch from a descriptor in the
+ * same single command instead.
  */
 export const ARCHIVE_BATCH_SIZE = 300;
 const TAR_BLOCK_SIZE = 512;
+const TRANSFER_UNAVAILABLE = '__PI_TRANSFER_UNAVAILABLE__';
+
+function isInsidePosixPath(parent: string, candidate: string): boolean {
+  const relative = path.posix.relative(parent, candidate);
+  return (
+    relative === '' ||
+    (!relative.startsWith('..') && !path.posix.isAbsolute(relative))
+  );
+}
 
 function normalizeRelativePath(inputPath: string): string {
   const normalized = inputPath.split(path.posix.sep).join(path.sep);
@@ -97,12 +110,64 @@ async function listRemoteWorkspaceEntries(
   // relying on shells that can inspect a symlinked directory but cannot
   // traverse paths below it, including when the symlink is an ancestor of the
   // sandbox work directory, without repeatedly resolving every component of
-  // deep ordinary paths.
+  // deep ordinary paths. Every resolved path must stay below the physical
+  // workspace root; entries that resolve elsewhere are skipped.
   const scopedPaths = [
     ...PI_CONFIG_DIRS.map(dir => `./${dir}`),
     ...PI_CONTEXT_FILENAMES.map(name => `./${name}`),
   ];
   const listCommand = [
+    'pi_config_resolve() {',
+    '  pending=$1',
+    '  resolved=',
+    '  seen_links=',
+    '  case "$pending" in',
+    '    /*) ;;',
+    '    *) pending=$PWD/$pending ;;',
+    '  esac',
+    '  while [ -n "$pending" ]; do',
+    '    pending=${pending#/}',
+    '    [ -n "$pending" ] || break',
+    '    component=${pending%%/*}',
+    '    if [ "$pending" = "$component" ]; then',
+    '      pending=',
+    '    else',
+    '      pending=${pending#*/}',
+    '    fi',
+    '    case "$component" in',
+    '      ""|.) continue ;;',
+    '      ..)',
+    '        resolved=${resolved%/*}',
+    '        continue',
+    '        ;;',
+    '    esac',
+    '    candidate=$resolved/$component',
+    '    if [ -L "$candidate" ]; then',
+    '      case "$seen_links" in',
+    '        *"',
+    '"$candidate"',
+    '"*)',
+    `          printf 'Pi config traversal encountered a symlink cycle at %s\\n' "$candidate" >&2`,
+    '          exit 1',
+    '          ;;',
+    '      esac',
+    '      seen_links=$seen_links"',
+    '"$candidate"',
+    '"',
+    '      target=$(readlink "$candidate") || exit $?',
+    '      case "$target" in',
+    '        /*) pending=$target${pending:+/$pending} ;;',
+    '        *) pending=${candidate%/*}/$target${pending:+/$pending} ;;',
+    '      esac',
+    '      resolved=',
+    '    else',
+    '      resolved=$candidate',
+    '    fi',
+    '  done',
+    '}',
+    `pi_config_resolve ${shellQuote(sandboxWorkDir)}`,
+    'pi_config_root=$resolved',
+    `printf 'r\\t%s\\n' "\${pi_config_root:-/}"`,
     `pi_config_sources=(${scopedPaths
       .map(scopedPath =>
         shellQuote(path.posix.join(sandboxWorkDir, scopedPath.slice(2))),
@@ -121,56 +186,18 @@ async function listRemoteWorkspaceEntries(
     '  resolve_ancestors=${pi_config_resolve_ancestors[$pi_config_index]}',
     '  pi_config_index=$((pi_config_index + 1))',
     '  if [ "$resolve_ancestors" = 1 ] || [ -L "$source" ]; then',
-    '    pending=$source',
-    '    resolved=',
-    '    seen_links=',
-    '    case "$pending" in',
-    '      /*) ;;',
-    '      *) pending=$PWD/$pending ;;',
-    '    esac',
-    '    while [ -n "$pending" ]; do',
-    '      pending=${pending#/}',
-    '      [ -n "$pending" ] || break',
-    '      component=${pending%%/*}',
-    '      if [ "$pending" = "$component" ]; then',
-    '        pending=',
-    '      else',
-    '        pending=${pending#*/}',
-    '      fi',
-    '      case "$component" in',
-    '        ""|.) continue ;;',
-    '        ..)',
-    '          resolved=${resolved%/*}',
-    '          continue',
-    '          ;;',
-    '      esac',
-    '      candidate=$resolved/$component',
-    '      if [ -L "$candidate" ]; then',
-    '        case "$seen_links" in',
-    '          *"',
-    '"$candidate"',
-    '"*)',
-    `            printf 'Pi config traversal encountered a symlink cycle at %s\\n' "$candidate" >&2`,
-    '            exit 1',
-    '            ;;',
-    '        esac',
-    '        seen_links=$seen_links"',
-    '"$candidate"',
-    '"',
-    '        target=$(readlink "$candidate") || exit $?',
-    '        case "$target" in',
-    '          /*) pending=$target${pending:+/$pending} ;;',
-    '          *) pending=${candidate%/*}/$target${pending:+/$pending} ;;',
-    '        esac',
-    '        resolved=',
-    '      else',
-    '        resolved=$candidate',
-    '      fi',
-    '    done',
+    '    pi_config_resolve "$source"',
     '    if [ -z "$resolved" ]; then',
     `      printf 'Pi config traversal resolved %s to the filesystem root; skipping\\n' "$relative" >&2`,
     '      continue',
     '    fi',
+    '    case "$resolved" in',
+    '      "$pi_config_root"/*) ;;',
+    '      *)',
+    `        printf 'Pi config traversal resolved %s outside the workspace; skipping\\n' "$relative" >&2`,
+    '        continue',
+    '        ;;',
+    '    esac',
     '    source=$resolved',
     '  fi',
     '  if [ -d "$source" ]; then',
@@ -210,14 +237,26 @@ async function listRemoteWorkspaceEntries(
 
   const directories: string[] = [];
   const files: Array<{ relativePath: string; sandboxPath: string }> = [];
+  let workspaceRoot: string | undefined;
 
   for (const line of output.split('\n').filter(Boolean)) {
     const [kind, rawPath, sandboxPath] = line.split('\t', 3);
     if (!rawPath) continue;
 
+    if (kind === 'r') {
+      workspaceRoot = path.posix.normalize(rawPath);
+      continue;
+    }
     const relativePath = normalizeRelativePath(rawPath);
     if (kind === 'd') directories.push(relativePath);
-    else if (kind === 'f' && sandboxPath) {
+    else if (
+      kind === 'f' &&
+      sandboxPath &&
+      workspaceRoot != null &&
+      path.posix.isAbsolute(sandboxPath) &&
+      sandboxPath !== workspaceRoot &&
+      isInsidePosixPath(workspaceRoot, sandboxPath)
+    ) {
       files.push({ relativePath, sandboxPath });
     }
   }
@@ -284,45 +323,112 @@ function parseTarFiles(archive: Buffer): Map<string, Buffer> {
 }
 
 /**
- * Transfer a batch of sandbox files with a single command. Returns the decoded
- * contents keyed by the requested sandbox path, leaving out anything the
- * sandbox could not archive (no `tar`/`gzip`/`base64`, or a file that vanished
- * mid-sync) so the caller can fall back to a per-file read.
+ * Transfer a batch of sandbox files with a single command, returning the
+ * decoded contents keyed by the requested sandbox path. Files left out of the
+ * returned map were no longer regular files at their listed physical path when
+ * the transfer ran and must not be read by any other route.
+ *
+ * The listing resolved every path to a physical location inside the workspace,
+ * and the transfer acts only on the object found there, never on whatever a
+ * path lookup would reach later:
+ *
+ * - With `tar`, `gzip`, `base64`, and `realpath`, each listed directory is
+ *   entered once and the shell's real working directory is compared with the
+ *   listed one before anything is archived, so a directory swapped for a
+ *   symlink is refused rather than followed. Members are archived by basename
+ *   from that working directory, and symlinked members are left out (GNU tar
+ *   also opens them without following).
+ * - Otherwise, with `base64` and `/proc`, each file is opened once and its
+ *   content is streamed from that descriptor only when the kernel reports the
+ *   opened file at the listed physical path.
  */
-async function readSandboxFilesAsArchive(
+async function readSandboxFiles(
   sandbox: Experimental_SandboxSession,
   sandboxPaths: string[],
 ): Promise<Map<string, Buffer>> {
-  // Archive relative to `/` so member names are the requested absolute paths
-  // without their leading slash, wherever the files live: the traversal
-  // resolves symlinks, so these paths can point outside the workspace.
-  const members = sandboxPaths.map(sandboxPath =>
-    sandboxPath.replace(/^\/+/, ''),
-  );
-  const command = `tar -C / -czf - -- ${members
-    .map(shellQuote)
-    .join(' ')} 2>/dev/null | base64`;
-
-  let encoded: string;
-  try {
-    encoded = (await readCommandOutput(sandbox, command)).replace(/\s+/g, '');
-  } catch {
-    return new Map();
+  const groups = new Map<string, string[]>();
+  for (const sandboxPath of sandboxPaths) {
+    const directory = path.posix.dirname(sandboxPath);
+    const names = groups.get(directory) ?? [];
+    names.push(path.posix.basename(sandboxPath));
+    groups.set(directory, names);
   }
-  if (encoded === '') return new Map();
+  const groupList = [...groups];
 
-  let entries: Map<string, Buffer>;
-  try {
-    entries = parseTarFiles(gunzipSync(Buffer.from(encoded, 'base64')));
-  } catch {
-    return new Map();
+  const command = [
+    'if realpath / >/dev/null 2>&1 && command -v tar >/dev/null 2>&1 && command -v gzip >/dev/null 2>&1 && command -v base64 >/dev/null 2>&1; then',
+    ...groupList.map(([directory, names], index) =>
+      [
+        `  if cd -- ${shellQuote(directory)} 2>/dev/null && [ "$(realpath .)" = ${shellQuote(directory)} ]; then`,
+        `    printf '@%s\\n' ${index}`,
+        '    pi_archive_names=()',
+        `    for pi_archive_name in ${names.map(shellQuote).join(' ')}; do`,
+        '      if [ -f "$pi_archive_name" ] && [ ! -L "$pi_archive_name" ]; then pi_archive_names+=("$pi_archive_name"); fi',
+        '    done',
+        '    if [ "${#pi_archive_names[@]}" -gt 0 ]; then tar -cf - -- "${pi_archive_names[@]}" 2>/dev/null | gzip -c | base64; fi',
+        '  fi',
+      ].join('\n'),
+    ),
+    'elif command -v base64 >/dev/null 2>&1 && { [ "$(readlink /proc/self/fd/3 2>/dev/null)" = / ]; } 3</ 2>/dev/null; then',
+    ...sandboxPaths.map(
+      (sandboxPath, index) =>
+        `  if [ -f ${shellQuote(sandboxPath)} ]; then { if [ "$(readlink /proc/self/fd/3)" = ${shellQuote(sandboxPath)} ]; then printf '#%s\\n' ${index}; base64 <&3; fi; } 2>/dev/null 3< ${shellQuote(sandboxPath)}; fi`,
+    ),
+    'else',
+    `  printf '%s\\n' ${shellQuote(TRANSFER_UNAVAILABLE)}`,
+    'fi',
+    'true',
+  ].join('\n');
+
+  const output = await readCommandOutput(sandbox, command);
+  if (output.trim() === TRANSFER_UNAVAILABLE) {
+    throw new Error(
+      'Sandbox workspace mirror needs tar, gzip, base64, and realpath, or base64 and /proc, to copy Pi configuration without following symlinks',
+    );
+  }
+
+  const sections = new Map<string, string>();
+  let currentSection: string | undefined;
+  for (const line of output.split('\n')) {
+    const header = /^([@#]\d+)$/.exec(line.trim());
+    if (header) {
+      currentSection = header[1] as string;
+      sections.set(currentSection, '');
+    } else if (currentSection != null) {
+      sections.set(
+        currentSection,
+        `${sections.get(currentSection)}${line.replace(/\s+/g, '')}`,
+      );
+    }
   }
 
   const contents = new Map<string, Buffer>();
-  for (const [index, member] of members.entries()) {
-    const content = entries.get(member);
-    if (content != null) {
-      contents.set(sandboxPaths[index] as string, content);
+  for (const [section, encoded] of sections) {
+    const index = Number(section.slice(1));
+    if (section.startsWith('#')) {
+      const sandboxPath = sandboxPaths[index];
+      if (sandboxPath != null) {
+        contents.set(sandboxPath, Buffer.from(encoded, 'base64'));
+      }
+      continue;
+    }
+
+    const group = groupList[index];
+    if (group == null || encoded === '') continue;
+
+    let entries: Map<string, Buffer>;
+    try {
+      entries = parseTarFiles(gunzipSync(Buffer.from(encoded, 'base64')));
+    } catch {
+      continue;
+    }
+
+    const [directory, names] = group;
+    for (const name of names) {
+      const content = entries.get(name) ?? entries.get(`./${name}`);
+      if (content != null) {
+        contents.set(path.posix.join(directory, name), content);
+      }
     }
   }
   return contents;
@@ -458,24 +564,19 @@ export async function syncHostWorkspaceFromSandbox(args: {
       offset,
       offset + ARCHIVE_BATCH_SIZE,
     );
-    const archived = await readSandboxFilesAsArchive(
+    const transferred = await readSandboxFiles(
       sandbox,
       batch.map(file => file.sandboxPath),
     );
 
     for (const { relativePath, sandboxPath } of batch) {
-      let content = archived.get(sandboxPath);
+      const hostPath = path.join(hostWorkDir, relativePath);
+      const content = transferred.get(sandboxPath);
       if (content == null) {
-        const bytes = await sandbox.readBinaryFile({ path: sandboxPath });
-        if (!bytes) {
-          throw new Error(
-            `Sandbox workspace file disappeared during mirror sync: ${sandboxPath}`,
-          );
-        }
-        content = Buffer.from(bytes);
+        await rm(hostPath, { force: true });
+        continue;
       }
 
-      const hostPath = path.join(hostWorkDir, relativePath);
       let shouldWrite = true;
       try {
         const existing = await readFile(hostPath);
