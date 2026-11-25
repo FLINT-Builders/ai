@@ -114,7 +114,8 @@ const baseFields = {
   resolution: resolutionSchema.nullish(),
 };
 
-const runtimeSchema = z.looseObject({
+// Unknown keys are stripped so provider options cannot reach the request body.
+const runtimeSchema = z.object({
   mode: modeSchema.optional(),
   videoUrl: nonEmptyStringSchema.optional(),
   referenceImageUrls: z.array(nonEmptyStringSchema).min(1).max(7).optional(),
