@@ -1,7 +1,8 @@
-import type {
-  ImageModelV4,
-  ImageModelV4File,
-  SharedV4Warning,
+import {
+  InvalidArgumentError,
+  type ImageModelV4,
+  type ImageModelV4File,
+  type SharedV4Warning,
 } from '@ai-sdk/provider';
 import {
   combineHeaders,
@@ -128,7 +129,7 @@ export class DeepInfraImageModel implements ImageModelV4 {
     // Allow passing either and leave it up to the server to validate.
     const splitSize = size?.split('x');
     const { value: response, responseHeaders } = await postJsonToApi({
-      url: `${this.config.baseURL}/${this.modelId}`,
+      url: this.getGenerateUrl(),
       headers: combineHeaders(this.config.headers?.(), headers),
       body: {
         prompt,
@@ -160,6 +161,28 @@ export class DeepInfraImageModel implements ImageModelV4 {
         headers: responseHeaders,
       },
     };
+  }
+
+  private getGenerateUrl(): string {
+    const segments = this.modelId.split('/');
+
+    for (const segment of segments) {
+      if (
+        segment === '' ||
+        segment === '.' ||
+        segment === '..' ||
+        // '%' is rejected so that percent-encoded dots cannot be normalized
+        // into '..' by the URL parser.
+        /[\\?#%\p{Cc}]/u.test(segment)
+      ) {
+        throw new InvalidArgumentError({
+          argument: 'modelId',
+          message: `Invalid DeepInfra image model ID: ${JSON.stringify(this.modelId)}.`,
+        });
+      }
+    }
+
+    return `${this.config.baseURL}/${segments.map(encodeURIComponent).join('/')}`;
   }
 
   private getEditUrl(): string {
