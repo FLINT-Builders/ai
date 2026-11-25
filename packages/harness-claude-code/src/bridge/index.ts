@@ -95,7 +95,6 @@ const NATIVE_TOOL_KINDS: Readonly<
   Glob: 'readonly',
   Grep: 'readonly',
   WebSearch: 'readonly',
-  WebFetch: 'readonly',
   TaskGet: 'readonly',
   TaskList: 'readonly',
   TaskOutput: 'readonly',
@@ -116,6 +115,8 @@ const NATIVE_TOOL_KINDS: Readonly<
   ToolSearch: 'readonly',
   Bash: 'bash',
   Monitor: 'bash',
+  // Fetches arbitrary URLs from the sandbox network, so it is never read-only.
+  WebFetch: 'bash',
 };
 
 function toCommonName(nativeName: string): CommonBuiltinToolName | string {
