@@ -76,8 +76,32 @@ function formatMediaUrl({
   }
 
   return part.data.type === 'url'
-    ? part.data.url.toString()
+    ? formatPromptUrl(part.data.url)
     : `data:${mediaType};base64,${convertToBase64(part.data.data)}`;
+}
+
+const allowedPromptUrlProtocols = new Set(['http:', 'https:', 'data:']);
+
+// Moonshot resolves ms:// Files API ids under the API key of the request, so a
+// prompt URL could name any file stored under that key. The URL is read once
+// and re-parsed so the checked value is the value that is sent.
+function formatPromptUrl(url: URL): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(String(url));
+  } catch {
+    throw new UnsupportedFunctionalityError({
+      functionality: 'file part URLs that are not valid URLs',
+    });
+  }
+
+  if (!allowedPromptUrlProtocols.has(parsed.protocol)) {
+    throw new UnsupportedFunctionalityError({
+      functionality: `file part URLs with the ${parsed.protocol} scheme (use a Moonshot provider reference for Files API files)`,
+    });
+  }
+
+  return parsed.href;
 }
 
 // Moonshot AI chat completions accepts text, image_url, and video_url content

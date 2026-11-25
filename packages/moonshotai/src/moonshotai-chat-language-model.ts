@@ -112,12 +112,10 @@ export class MoonshotAIChatLanguageModel implements LanguageModelV4 {
   readonly modelId: MoonshotAIChatModelId;
 
   // Moonshot AI does not fetch external URLs; the AI SDK downloads and
-  // inlines URL file parts instead. ms:// file references from the Moonshot
-  // Files API are passed through natively.
-  readonly supportedUrls = {
-    'image/*': [/^ms:\/\//],
-    'video/*': [/^ms:\/\//],
-  };
+  // inlines URL file parts instead. ms:// Files API ids resolve under the
+  // API key of the request, so they are only accepted as explicit provider
+  // references (`{ type: 'reference' }`), never as prompt URLs.
+  readonly supportedUrls: Record<string, RegExp[]> = {};
 
   private readonly config: MoonshotAIChatConfig;
   private readonly failedResponseHandler: ResponseHandler<APICallError>;

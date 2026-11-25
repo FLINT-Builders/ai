@@ -423,6 +423,14 @@ or video media type:
 }
 ```
 
+<Note>
+  Moonshot resolves `ms://` file IDs under the API key of the request, so any
+  file stored under that key can be named. `ms://` URLs in file part URLs (for
+  example `new URL('ms://file-id')` or a UI message file `url`) are rejected
+  before a request is sent. Only pass provider references for files the current
+  user is allowed to access.
+</Note>
+
 Inline text file data is sent as a native text content part:
 
 ```ts
