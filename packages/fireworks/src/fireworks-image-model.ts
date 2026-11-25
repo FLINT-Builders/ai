@@ -1,4 +1,8 @@
-import type { ImageModelV4, SharedV4Warning } from '@ai-sdk/provider';
+import {
+  InvalidArgumentError,
+  type ImageModelV4,
+  type SharedV4Warning,
+} from '@ai-sdk/provider';
 import {
   combineHeaders,
   convertImageModelFileToDataUri,
@@ -69,20 +73,38 @@ const modelToBackendConfig: Partial<
   },
 };
 
+// The model id is interpolated into the request path, so it must be exactly
+// `accounts/<account>/models/<model>` with no dot-only, encoded, or extra
+// segments that could redirect the authenticated request to another endpoint.
+const modelIdPattern =
+  /^accounts\/[A-Za-z0-9_-]+\/models\/[A-Za-z0-9_-][A-Za-z0-9._-]*$/;
+
+function getModelPath(modelId: FireworksImageModelId): string {
+  if (typeof modelId !== 'string' || !modelIdPattern.test(modelId)) {
+    throw new InvalidArgumentError({
+      argument: 'modelId',
+      message:
+        'Invalid Fireworks image model id. Expected the format "accounts/<account>/models/<model>".',
+    });
+  }
+  return modelId;
+}
+
 function getUrlForModel(
   baseUrl: string,
   modelId: FireworksImageModelId,
 ): string {
+  const modelPath = getModelPath(modelId);
   const config = modelToBackendConfig[modelId];
 
   switch (config?.urlFormat) {
     case 'image_generation':
-      return `${baseUrl}/image_generation/${modelId}`;
+      return `${baseUrl}/image_generation/${modelPath}`;
     case 'workflows_async':
-      return `${baseUrl}/workflows/${modelId}`;
+      return `${baseUrl}/workflows/${modelPath}`;
     case 'workflows':
     default:
-      return `${baseUrl}/workflows/${modelId}/text_to_image`;
+      return `${baseUrl}/workflows/${modelPath}/text_to_image`;
   }
 }
 
@@ -90,7 +112,7 @@ function getPollUrlForModel(
   baseUrl: string,
   modelId: FireworksImageModelId,
 ): string {
-  return `${baseUrl}/workflows/${modelId}/get_result`;
+  return `${baseUrl}/workflows/${getModelPath(modelId)}/get_result`;
 }
 
 interface FireworksImageModelConfig {
