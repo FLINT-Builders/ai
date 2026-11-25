@@ -8,10 +8,15 @@ import {
 } from '@ai-sdk/harness';
 import {
   createCredentialRequestTransformation,
+  createVerifiedArchiveInstallCommand,
   isHarnessAuthenticationEnvironment,
   type SandboxChannelReconnectOptions,
 } from '@ai-sdk/harness/utils';
-import { createACP, type ACPAuthenticationMode } from '@ai-sdk/harness-acp';
+import {
+  createACP,
+  type ACPAuthenticationMode,
+  type ACPSource,
+} from '@ai-sdk/harness-acp';
 import { tool } from '@ai-sdk/provider-utils';
 import { z } from 'zod/v4';
 import { VERSION } from './version';
@@ -24,6 +29,43 @@ import {
 
 const FX_CLIENT_APP = `ai-sdk/harness-fx/${VERSION}`;
 const DEFAULT_AI_GATEWAY_BASE_URL = 'https://ai-gateway.vercel.sh';
+
+const FX_CLI_VERSION = 'v0.0.17';
+const FX_CLI_DOWNLOAD_URL = `https://releases.fx.sh/${FX_CLI_VERSION}`;
+
+/*
+ * Digests of the published fx release archives for FX_CLI_VERSION. Update
+ * them together with the version.
+ */
+const FX_CLI_SOURCE = {
+  type: 'install-command',
+  command: createVerifiedArchiveInstallCommand({
+    archives: {
+      'linux-x64': {
+        url: `${FX_CLI_DOWNLOAD_URL}/fx-linux-x86_64.tar.gz`,
+        sha256:
+          '78c155d59fa59e42fd56d93037fd75041868c9c67865e8c7f0ca6dcdfac23e75',
+      },
+      'linux-arm64': {
+        url: `${FX_CLI_DOWNLOAD_URL}/fx-linux-aarch64.tar.gz`,
+        sha256:
+          'b4633b8987ec43f1b9454e4629f3b5a4f1e086aae36b84ae4fefeacd6a53761f',
+      },
+      'darwin-x64': {
+        url: `${FX_CLI_DOWNLOAD_URL}/fx-macos-x86_64.tar.gz`,
+        sha256:
+          '984eef6632d7bd27ff7b75befb52b9db32c25287905009db5822f6a669861fec',
+      },
+      'darwin-arm64': {
+        url: `${FX_CLI_DOWNLOAD_URL}/fx-macos-aarch64.tar.gz`,
+        sha256:
+          '5cacb5b3624a79db8fd4e31dcbc59d6a933d7e5ed4c397776d95df6b618296a9',
+      },
+    },
+    installDir: `.local/share/fx/versions/${FX_CLI_VERSION}`,
+    executables: { fx: 'fx' },
+  }),
+} as const satisfies ACPSource;
 
 export type FxAuthenticationMode = ACPAuthenticationMode;
 
@@ -592,10 +634,7 @@ export function createFx(
       name: clientAppSegments.join('/'),
       version: clientAppVersion,
     },
-    source: {
-      type: 'install-command',
-      command: 'curl -fsSL https://fx.sh/setup.sh | bash',
-    },
+    source: FX_CLI_SOURCE,
     executable: 'fx',
     args: ['acp'],
     modelMapping: {
