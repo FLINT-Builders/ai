@@ -392,6 +392,35 @@ describe('createCodex adapter', () => {
     await session.doDestroy();
   });
 
+  it('keeps the bridge token and port out of the sandbox process environment', async () => {
+    const runs: string[] = [];
+    const spawns: string[] = [];
+    const spawnEnvs: Array<Record<string, string | undefined>> = [];
+    const writes: Array<{ path: string; content: string }> = [];
+    const session = await createCodex({ port: 4319 }).doStart({
+      sessionId: 's1',
+      sandboxSession: fakeNetworkSandboxSessionForStartupSuccess({
+        bridgePortUrl: 'ws://127.0.0.1:4319',
+        runs,
+        spawns,
+        spawnEnvs,
+        writes,
+      }),
+      sessionWorkDir: '/vercel/sandbox/codex-s1',
+    });
+
+    const env = spawnEnvs.at(0) ?? {};
+    expect(
+      ['BRIDGE_CHANNEL_TOKEN', 'BRIDGE_WS_PORT'].filter(key => key in env),
+    ).toEqual([]);
+    const command = spawns.join('\n');
+    expect(command.includes('BRIDGE_CHANNEL_TOKEN')).toBe(false);
+    expect(command.includes('BRIDGE_WS_PORT')).toBe(false);
+    const written = writes.map(write => write.content).join('\n');
+    expect(written.includes('BRIDGE_CHANNEL_TOKEN')).toBe(false);
+    await session.doDestroy();
+  });
+
   it('falls back to the default model, overridden by the per-turn model', async () => {
     const session = await createCodex().doStart({
       sessionId: 's1',
