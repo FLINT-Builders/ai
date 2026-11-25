@@ -38,7 +38,10 @@ import {
   type ResponseHandler,
 } from '@ai-sdk/provider-utils';
 import { z } from 'zod/v4';
-import { getModelPath } from './get-model-path';
+import {
+  getBatchResourcePath,
+  getModelResourcePath,
+} from './google-resource-path';
 import { googleFailedResponseHandler } from './google-error';
 import {
   GoogleLanguageModel,
@@ -202,6 +205,9 @@ export class GoogleBatch implements BatchV4<GoogleBatchModelIds> {
   ): Promise<BatchV4StartResult> {
     assertSupportedBatchRequests(options.requests);
     const modelId = getGoogleBatchModelId(options.requests);
+    const createUrl = `${this.batchConfig.baseURL}/${getModelResourcePath(
+      modelId,
+    )}:batchGenerateContent`;
     const warnings: BatchV4StartResult['warnings'] = [];
     const displayName = `ai-sdk-batch-${this.batchGenerateId()}`;
     const inlinedRequests: Array<{
@@ -287,9 +293,6 @@ export class GoogleBatch implements BatchV4<GoogleBatchModelIds> {
     }
 
     const headers = await this.getHeaders(options.headers);
-    const createUrl = `${this.batchConfig.baseURL}/${getModelPath(
-      modelId,
-    )}:batchGenerateContent`;
 
     if (fileParts == null) {
       const { value: operation } = await postJsonToApi({
@@ -409,7 +412,7 @@ export class GoogleBatch implements BatchV4<GoogleBatchModelIds> {
     options: BatchV4OperationOptions,
   ): Promise<BatchV4CancelResult> {
     await postJsonToApi({
-      url: `${this.batchConfig.baseURL}/${options.batchId}:cancel`,
+      url: `${this.batchConfig.baseURL}/${getBatchResourcePath(options.batchId)}:cancel`,
       headers: await this.getHeaders(options.headers),
       body: {},
       failedResponseHandler: googleFailedResponseHandler,
@@ -526,7 +529,7 @@ export class GoogleBatch implements BatchV4<GoogleBatchModelIds> {
     options: BatchV4OperationOptions,
   ): Promise<GoogleBatchOperation> {
     const { value: operation } = await getFromApi({
-      url: `${this.batchConfig.baseURL}/${options.batchId}`,
+      url: `${this.batchConfig.baseURL}/${getBatchResourcePath(options.batchId)}`,
       headers: await this.getHeaders(options.headers),
       failedResponseHandler: googleFailedResponseHandler,
       successfulResponseHandler: createJsonResponseHandler(

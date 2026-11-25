@@ -23,6 +23,10 @@ import {
 import { z } from 'zod/v4';
 import { googleFailedResponseHandler } from './google-error';
 import {
+  getOperationResourcePath,
+  getSafePathSegment,
+} from './google-resource-path';
+import {
   googleVideoModelOptionsSchema,
   type GoogleVideoModelOptions,
 } from './google-video-model-options';
@@ -347,12 +351,16 @@ export class GoogleVideoModel implements VideoModelV4 {
   async doStart(
     options: Parameters<NonNullable<VideoModelV4['doStart']>>[0],
   ): Promise<VideoModelV4OperationStartResult> {
+    const url = `${this.config.baseURL}/models/${getSafePathSegment({
+      argument: 'modelId',
+      value: this.modelId,
+    })}:predictLongRunning`;
     const currentDate = this.config._internal?.currentDate?.() ?? new Date();
     const { instances, parameters, warnings } =
       await this.buildRequest(options);
 
     const { value: operation, responseHeaders } = await postJsonToApi({
-      url: `${this.config.baseURL}/models/${this.modelId}:predictLongRunning`,
+      url,
       headers: combineHeaders(
         await resolve(this.config.headers),
         options.headers,
@@ -395,7 +403,7 @@ export class GoogleVideoModel implements VideoModelV4 {
     const { operationName } = options.operation as { operationName: string };
 
     const { value: statusOperation, responseHeaders } = await getFromApi({
-      url: `${this.config.baseURL}/${operationName}`,
+      url: `${this.config.baseURL}/${getOperationResourcePath(operationName)}`,
       validateUrl: false,
       headers: combineHeaders(
         await resolve(this.config.headers),
