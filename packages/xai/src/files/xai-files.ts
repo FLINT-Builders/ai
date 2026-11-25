@@ -34,6 +34,7 @@ import {
   xaiFilesOptionsSchema,
   type XaiFilesOptions,
 } from './xai-files-options';
+import { encodePathSegment } from '../encode-path-segment';
 
 interface XaiFilesConfig {
   provider: string;
@@ -43,17 +44,6 @@ interface XaiFilesConfig {
 }
 
 type XaiFilesResponse = InferSchema<typeof xaiFilesResponseSchema>;
-
-function encodePathSegment(value: string): string {
-  const encodedValue = encodeURIComponent(value);
-
-  // URL parsing normalizes both literal and percent-encoded dot segments.
-  return encodedValue === '.'
-    ? '%252E'
-    : encodedValue === '..'
-      ? '%252E%252E'
-      : encodedValue;
-}
 
 export class XaiFiles implements FilesV4 {
   readonly specificationVersion = 'v4';
