@@ -30,6 +30,22 @@ const HANDLED_PROVIDER_OPTIONS = new Set([
   'optimizePromptMode',
 ]);
 
+// Request fields the SDK derives from call options or typed provider options.
+// Raw provider option pass-through must never set them, so that forwarded
+// provider options cannot change the model, prompt, input images, or settings.
+const SDK_OWNED_REQUEST_FIELDS = new Set([
+  'model',
+  'prompt',
+  'image',
+  'size',
+  'watermark',
+  'output_format',
+  'sequential_image_generation',
+  'sequential_image_generation_options',
+  'optimize_prompt_options',
+  'response_format',
+]);
+
 interface ByteDanceImageModelConfig extends ByteDanceConfig {
   _internal?: {
     currentDate?: () => Date;
@@ -146,9 +162,20 @@ export class ByteDanceImageModel implements ImageModelV4 {
       }
       // Pass through any additional options not explicitly handled above.
       for (const [key, value] of Object.entries(byteDanceOptions)) {
-        if (!HANDLED_PROVIDER_OPTIONS.has(key)) {
-          body[key] = value;
+        if (HANDLED_PROVIDER_OPTIONS.has(key)) {
+          continue;
         }
+        if (SDK_OWNED_REQUEST_FIELDS.has(key)) {
+          warnings.push({
+            type: 'unsupported',
+            feature: `providerOptions.bytedance.${key}`,
+            details:
+              `\`${key}\` is set by the SDK and cannot be passed through ` +
+              'provider options. Use the corresponding call or provider option instead.',
+          });
+          continue;
+        }
+        body[key] = value;
       }
     }
 

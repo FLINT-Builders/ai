@@ -41,6 +41,26 @@ const HANDLED_PROVIDER_OPTIONS = new Set([
   'pollTimeoutMs',
 ]);
 
+// Request fields the SDK derives from call options, typed provider options, or
+// `webhookUrl`. Raw provider option pass-through must never set them, so that
+// forwarded provider options cannot change the model, prompt, media, call
+// settings, or callback destination.
+const SDK_OWNED_REQUEST_FIELDS = new Set([
+  'model',
+  'content',
+  'ratio',
+  'duration',
+  'seed',
+  'resolution',
+  'generate_audio',
+  'watermark',
+  'camera_fixed',
+  'return_last_frame',
+  'service_tier',
+  'draft',
+  'callback_url',
+]);
+
 const RESOLUTION_MAP: Record<string, string> = {
   '864x496': '480p',
   '496x864': '480p',
@@ -338,9 +358,20 @@ export class ByteDanceVideoModel implements VideoModelV4 {
       }
       // Pass through any additional options not explicitly handled
       for (const [key, value] of Object.entries(byteDanceOptions)) {
-        if (!HANDLED_PROVIDER_OPTIONS.has(key)) {
-          body[key] = value;
+        if (HANDLED_PROVIDER_OPTIONS.has(key)) {
+          continue;
         }
+        if (SDK_OWNED_REQUEST_FIELDS.has(key)) {
+          warnings.push({
+            type: 'unsupported',
+            feature: `providerOptions.bytedance.${key}`,
+            details:
+              `\`${key}\` is set by the SDK and cannot be passed through ` +
+              'provider options. Use the corresponding call or provider option instead.',
+          });
+          continue;
+        }
+        body[key] = value;
       }
     }
 
