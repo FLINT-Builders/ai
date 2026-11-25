@@ -214,13 +214,13 @@ describe('ACP permission controller', () => {
   it.each([
     { permissionMode: 'allow-all', kind: 'execute' },
     { permissionMode: 'allow-all', kind: 'other' },
+    { permissionMode: 'allow-all', kind: 'fetch' },
     { permissionMode: 'allow-edits', kind: 'edit' },
     { permissionMode: 'allow-edits', kind: 'delete' },
     { permissionMode: 'allow-edits', kind: 'move' },
     { permissionMode: 'allow-reads', kind: 'read' },
     { permissionMode: 'allow-reads', kind: 'search' },
     { permissionMode: 'allow-reads', kind: 'think' },
-    { permissionMode: 'allow-reads', kind: 'fetch' },
   ] as const)(
     'auto-approves $kind for an unmapped $permissionMode implementation',
     async ({ permissionMode, kind }) => {
@@ -250,7 +250,9 @@ describe('ACP permission controller', () => {
   it.each([
     { permissionMode: 'allow-reads', kind: 'edit' },
     { permissionMode: 'allow-reads', kind: 'execute' },
+    { permissionMode: 'allow-reads', kind: 'fetch' },
     { permissionMode: 'allow-edits', kind: 'execute' },
+    { permissionMode: 'allow-edits', kind: 'fetch' },
     { permissionMode: 'allow-edits', kind: 'other' },
     { permissionMode: 'allow-edits', kind: 'switch_mode' },
   ] as const)(
