@@ -406,6 +406,36 @@ describe('Claude Code bridge configuration', () => {
     });
   });
 
+  test.each(['allow-reads', 'allow-edits'] as const)(
+    'requests host approval for WebFetch in %s',
+    async permissionMode => {
+      state.start = { ...state.start, permissionMode };
+
+      await import('./index');
+
+      const options = state.queryArgs[0]?.options as {
+        canUseTool: (
+          toolName: string,
+          toolInput: Record<string, unknown>,
+          options: { toolUseID: string },
+        ) => Promise<unknown>;
+        settings?: { permissions?: { ask?: string[] } };
+      };
+      await options.canUseTool(
+        'WebFetch',
+        { url: 'http://169.254.169.254/latest/meta-data/', prompt: 'Read' },
+        { toolUseID: 'web-fetch' },
+      );
+
+      expect(state.emitted).toContainEqual({
+        type: 'tool-approval-request',
+        approvalId: 'web-fetch',
+        toolCallId: 'web-fetch',
+      });
+      expect(options.settings?.permissions?.ask).toContain('WebFetch(*)');
+    },
+  );
+
   test('routes questions through a PreToolUse hook in allow-all mode', async () => {
     const nativeInput = {
       questions: [

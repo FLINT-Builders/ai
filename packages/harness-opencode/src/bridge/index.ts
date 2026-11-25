@@ -112,12 +112,34 @@ const PUBLIC_TO_NATIVE: Readonly<Record<string, string>> = {
   agent: 'agent',
 };
 
+const PERMISSION_TO_TOOL: Readonly<Record<string, string>> = {
+  read: 'read',
+  glob: 'glob',
+  grep: 'grep',
+  list: 'ls',
+  edit: 'edit',
+  write: 'write',
+  bash: 'bash',
+  task: 'agent',
+  webfetch: 'webfetch',
+  websearch: 'websearch',
+  skill: 'skill',
+  todowrite: 'todowrite',
+};
+
+// Resources of these permissions are URLs or search queries, not files.
+const NETWORK_PERMISSIONS: ReadonlySet<string> = new Set([
+  'webfetch',
+  'websearch',
+]);
+
+// Tools missing here (including webfetch) always need host approval in
+// allow-reads and allow-edits.
 const TOOL_KIND: Readonly<Record<string, 'readonly' | 'edit' | 'bash'>> = {
   read: 'readonly',
   glob: 'readonly',
   grep: 'readonly',
   ls: 'readonly',
-  webfetch: 'readonly',
   write: 'edit',
   edit: 'edit',
   bash: 'bash',
@@ -1327,6 +1349,12 @@ async function selectPermissionReply({
   if (resources.some(resource => isExternalPath(resource))) {
     return { reply: 'reject', message: 'External directory access rejected.' };
   }
+  if (
+    !NETWORK_PERMISSIONS.has(action) &&
+    resources.some(resource => isUrlResource(resource))
+  ) {
+    return { reply: 'reject', message: 'URL resource rejected.' };
+  }
   const kind = TOOL_KIND[toolName] ?? 'bash';
   const allowed =
     permissionMode === 'allow-edits'
@@ -1349,19 +1377,7 @@ async function selectPermissionReply({
 }
 
 function toPermissionToolName(action: string): string {
-  const normalized = action.toLowerCase();
-  if (normalized.includes('bash') || normalized.includes('shell'))
-    return 'bash';
-  if (normalized.includes('edit')) return 'edit';
-  if (normalized.includes('write')) return 'write';
-  if (normalized.includes('webfetch')) return 'webfetch';
-  if (normalized.includes('task') || normalized.includes('agent'))
-    return 'agent';
-  if (normalized.includes('list')) return 'ls';
-  if (normalized.includes('grep')) return 'grep';
-  if (normalized.includes('glob')) return 'glob';
-  if (normalized.includes('read')) return 'read';
-  return toWireToolName(normalized);
+  return PERMISSION_TO_TOOL[action] ?? toWireToolName(action);
 }
 
 function resolveInactiveBuiltinToolNames(
@@ -1391,6 +1407,12 @@ function isExternalPath(resource: string): boolean {
   return (
     !isPathInsideOrEqual(resource, workdir) &&
     (!skillsDir || !isPathInsideOrEqual(resource, skillsDir))
+  );
+}
+
+function isUrlResource(resource: string): boolean {
+  return (
+    !path.isAbsolute(resource) && /^[a-z][a-z0-9+.-]*:\/\//i.test(resource)
   );
 }
 
