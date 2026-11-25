@@ -19,6 +19,7 @@ import {
   type Resolvable,
 } from '@ai-sdk/provider-utils';
 import { z } from 'zod/v4';
+import { encodeModelPathSegment } from './encode-model-path-segment';
 import { googleVertexFailedResponseHandler } from './google-vertex-error';
 import {
   googleVertexVideoModelOptionsSchema,
@@ -352,7 +353,7 @@ export class GoogleVertexVideoModel implements VideoModelV4 {
       await this.buildRequest(options);
 
     const { value: operation, responseHeaders } = await postJsonToApi({
-      url: `${this.config.baseURL}/models/${this.modelId}:predictLongRunning`,
+      url: `${this.config.baseURL}/models/${encodeModelPathSegment(this.modelId)}:predictLongRunning`,
       headers: combineHeaders(
         await resolve(this.config.headers),
         options.headers,
@@ -395,7 +396,7 @@ export class GoogleVertexVideoModel implements VideoModelV4 {
     const { operationName } = options.operation as { operationName: string };
 
     const { value: statusOperation, responseHeaders } = await postJsonToApi({
-      url: `${this.config.baseURL}/models/${this.modelId}:fetchPredictOperation`,
+      url: `${this.config.baseURL}/models/${encodeModelPathSegment(this.modelId)}:fetchPredictOperation`,
       headers: combineHeaders(
         await resolve(this.config.headers),
         options.headers,

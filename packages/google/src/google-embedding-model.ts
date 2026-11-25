@@ -16,6 +16,7 @@ import {
   type FetchFunction,
 } from '@ai-sdk/provider-utils';
 import { z } from 'zod/v4';
+import { encodeModelPathSegment } from './encode-model-path-segment';
 import { googleFailedResponseHandler } from './google-error';
 import {
   googleEmbeddingModelOptions,
@@ -82,6 +83,8 @@ export class GoogleEmbeddingModel implements EmbeddingModelV4 {
       });
     }
 
+    const modelPathSegment = encodeModelPathSegment(this.modelId);
+
     const mergedHeaders = combineHeaders(
       this.config.headers ? await resolve(this.config.headers) : undefined,
       headers,
@@ -112,10 +115,10 @@ export class GoogleEmbeddingModel implements EmbeddingModelV4 {
         value: response,
         rawValue,
       } = await postJsonToApi({
-        url: `${this.config.baseURL}/models/${this.modelId}:embedContent`,
+        url: `${this.config.baseURL}/models/${modelPathSegment}:embedContent`,
         headers: mergedHeaders,
         body: {
-          model: `models/${this.modelId}`,
+          model: `models/${modelPathSegment}`,
           content: {
             parts,
           },
@@ -144,14 +147,14 @@ export class GoogleEmbeddingModel implements EmbeddingModelV4 {
       value: response,
       rawValue,
     } = await postJsonToApi({
-      url: `${this.config.baseURL}/models/${this.modelId}:batchEmbedContents`,
+      url: `${this.config.baseURL}/models/${modelPathSegment}:batchEmbedContents`,
       headers: mergedHeaders,
       body: {
         requests: values.map((value, index) => {
           const valueParts = multimodalContent?.[index];
           const textPart = value ? [{ text: value }] : [];
           return {
-            model: `models/${this.modelId}`,
+            model: `models/${modelPathSegment}`,
             content: {
               role: 'user',
               parts:
