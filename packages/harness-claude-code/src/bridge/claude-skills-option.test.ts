@@ -7,7 +7,12 @@ describe('toClaudeSkillsOption', () => {
     expect(toClaudeSkillsOption([])).toBeUndefined();
   });
 
-  it('enables all discovered skills when harness skills are configured', () => {
-    expect(toClaudeSkillsOption(['weather-forecast'])).toBe('all');
+  it('passes configured skill names through as the SDK allowlist', () => {
+    expect(toClaudeSkillsOption(['weather-forecast'])).toEqual([
+      'weather-forecast',
+    ]);
+    expect(toClaudeSkillsOption(['weather-forecast', 'weather-codes'])).toEqual(
+      ['weather-forecast', 'weather-codes'],
+    );
   });
 });
