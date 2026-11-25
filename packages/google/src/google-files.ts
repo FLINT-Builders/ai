@@ -18,6 +18,7 @@ import {
 } from '@ai-sdk/provider-utils';
 import { z } from 'zod/v4';
 import { googleFailedResponseHandler } from './google-error';
+import { encodePathSegment } from './encode-path-segment';
 
 export type GoogleFilesUploadOptions = {
   displayName?: string | null;
@@ -32,17 +33,6 @@ interface GoogleFilesConfig {
   baseURL: string;
   headers: () => Record<string, string | undefined>;
   fetch?: FetchFunction;
-}
-
-function encodePathSegment(value: string): string {
-  const encodedValue = encodeURIComponent(value);
-
-  // URL parsing normalizes both literal and percent-encoded dot segments.
-  return encodedValue === '.'
-    ? '%252E'
-    : encodedValue === '..'
-      ? '%252E%252E'
-      : encodedValue;
 }
 
 export class GoogleFiles implements FilesV4 {

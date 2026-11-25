@@ -39,6 +39,7 @@ import {
 } from '@ai-sdk/provider-utils';
 import { z } from 'zod/v4';
 import { getModelPath } from './get-model-path';
+import { encodePathSegment } from './encode-path-segment';
 import { googleFailedResponseHandler } from './google-error';
 import {
   GoogleLanguageModel,
@@ -409,7 +410,7 @@ export class GoogleBatch implements BatchV4<GoogleBatchModelIds> {
     options: BatchV4OperationOptions,
   ): Promise<BatchV4CancelResult> {
     await postJsonToApi({
-      url: `${this.batchConfig.baseURL}/${options.batchId}:cancel`,
+      url: `${this.batchConfig.baseURL}/${getBatchPath(options.batchId)}:cancel`,
       headers: await this.getHeaders(options.headers),
       body: {},
       failedResponseHandler: googleFailedResponseHandler,
@@ -502,7 +503,7 @@ export class GoogleBatch implements BatchV4<GoogleBatchModelIds> {
 
     const encodedResponsesFile = responsesFile
       .split('/')
-      .map(segment => encodeURIComponent(segment))
+      .map(segment => encodePathSegment(segment))
       .join('/');
 
     const { value: lines } = await getFromApi({
@@ -526,7 +527,7 @@ export class GoogleBatch implements BatchV4<GoogleBatchModelIds> {
     options: BatchV4OperationOptions,
   ): Promise<GoogleBatchOperation> {
     const { value: operation } = await getFromApi({
-      url: `${this.batchConfig.baseURL}/${options.batchId}`,
+      url: `${this.batchConfig.baseURL}/${getBatchPath(options.batchId)}`,
       headers: await this.getHeaders(options.headers),
       failedResponseHandler: googleFailedResponseHandler,
       successfulResponseHandler: createJsonResponseHandler(
@@ -951,4 +952,19 @@ function convertGoogleImageBatchResult(
         (result.usage.outputTokens.total ?? 0),
     },
   };
+}
+
+function getBatchPath(batchId: string): string {
+  const batchName = batchId.startsWith('batches/')
+    ? batchId.slice('batches/'.length)
+    : '';
+
+  if (batchName.trim() === '' || batchName.includes('/')) {
+    throw new InvalidArgumentError({
+      argument: 'batchId',
+      message: 'Google batch ID must have the form "batches/{batch}".',
+    });
+  }
+
+  return `batches/${encodePathSegment(batchName)}`;
 }
