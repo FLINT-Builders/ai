@@ -19,6 +19,7 @@ import {
   type GoogleVertexEmbeddingModelId,
 } from './google-vertex-embedding-model-options';
 import type { GoogleVertexConfig } from './google-vertex-config';
+import { getVertexModelIdPathSegment } from './google-vertex-model-id';
 
 export class GoogleVertexEmbeddingModel implements EmbeddingModelV4 {
   readonly specificationVersion = 'v4';
@@ -67,6 +68,8 @@ export class GoogleVertexEmbeddingModel implements EmbeddingModelV4 {
   }: Parameters<EmbeddingModelV4['doEmbed']>[0]): Promise<
     Awaited<ReturnType<EmbeddingModelV4['doEmbed']>>
   > {
+    const modelIdSegment = getVertexModelIdPathSegment(this.modelId);
+
     let googleOptions = await parseProviderOptions({
       provider: 'googleVertex',
       providerOptions,
@@ -111,7 +114,7 @@ export class GoogleVertexEmbeddingModel implements EmbeddingModelV4 {
         value: response,
         rawValue,
       } = await postJsonToApi({
-        url: `${this.config.baseURL}/models/${this.modelId}:embedContent`,
+        url: `${this.config.baseURL}/models/${modelIdSegment}:embedContent`,
         headers: mergedHeaders,
         body: {
           content: { parts: [{ text: values[0] }] },
@@ -141,7 +144,7 @@ export class GoogleVertexEmbeddingModel implements EmbeddingModelV4 {
       };
     }
 
-    const url = `${this.config.baseURL}/models/${this.modelId}:predict`;
+    const url = `${this.config.baseURL}/models/${modelIdSegment}:predict`;
     const {
       responseHeaders,
       value: response,
