@@ -220,7 +220,6 @@ describe('ACP permission controller', () => {
     { permissionMode: 'allow-reads', kind: 'read' },
     { permissionMode: 'allow-reads', kind: 'search' },
     { permissionMode: 'allow-reads', kind: 'think' },
-    { permissionMode: 'allow-reads', kind: 'fetch' },
   ] as const)(
     'auto-approves $kind for an unmapped $permissionMode implementation',
     async ({ permissionMode, kind }) => {
@@ -253,6 +252,8 @@ describe('ACP permission controller', () => {
     { permissionMode: 'allow-edits', kind: 'execute' },
     { permissionMode: 'allow-edits', kind: 'other' },
     { permissionMode: 'allow-edits', kind: 'switch_mode' },
+    { permissionMode: 'allow-reads', kind: 'fetch' },
+    { permissionMode: 'allow-edits', kind: 'fetch' },
   ] as const)(
     'requests host approval for $kind with unmapped $permissionMode',
     async ({ permissionMode, kind }) => {
