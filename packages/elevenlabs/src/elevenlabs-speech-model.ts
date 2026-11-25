@@ -1,4 +1,8 @@
-import type { SpeechModelV4, SharedV4Warning } from '@ai-sdk/provider';
+import {
+  InvalidArgumentError,
+  type SpeechModelV4,
+  type SharedV4Warning,
+} from '@ai-sdk/provider';
 import {
   combineHeaders,
   createBinaryResponseHandler,
@@ -12,15 +16,38 @@ import type { ElevenLabsConfig } from './elevenlabs-config';
 import { elevenlabsFailedResponseHandler } from './elevenlabs-error';
 import { elevenLabsSpeechModelOptionsSchema } from './elevenlabs-speech-model-options';
 import type { ElevenLabsSpeechAPITypes } from './elevenlabs-speech-api-types';
-import type {
-  ElevenLabsSpeechModelId,
-  ElevenLabsSpeechVoiceId,
-} from './elevenlabs-speech-options';
+import type { ElevenLabsSpeechModelId } from './elevenlabs-speech-options';
 
 interface ElevenLabsSpeechModelConfig extends ElevenLabsConfig {
   _internal?: {
     currentDate?: () => Date;
   };
+}
+
+function encodeVoiceIdPathSegment(voiceId: unknown): string {
+  const invalidVoiceIdError = new InvalidArgumentError({
+    argument: 'voice',
+    message:
+      'ElevenLabs voice ID must be a non-empty single path segment without "/", "\\", "?", "#", "%", or dot segments.',
+  });
+
+  // `%` is rejected so that percent-encoded dot segments cannot be supplied,
+  // and the literal `.` / `..` checks cover what URL parsing would normalize.
+  if (
+    typeof voiceId !== 'string' ||
+    voiceId.length === 0 ||
+    voiceId === '.' ||
+    voiceId === '..' ||
+    /[/\\?#%]/.test(voiceId)
+  ) {
+    throw invalidVoiceIdError;
+  }
+
+  try {
+    return encodeURIComponent(voiceId);
+  } catch {
+    throw invalidVoiceIdError;
+  }
 }
 
 export class ElevenLabsSpeechModel implements SpeechModelV4 {
@@ -59,6 +86,7 @@ export class ElevenLabsSpeechModel implements SpeechModelV4 {
     providerOptions,
   }: Parameters<SpeechModelV4['doGenerate']>[0]) {
     const warnings: SharedV4Warning[] = [];
+    const encodedVoiceId = encodeVoiceIdPathSegment(voice);
 
     // Parse provider options
     const elevenLabsOptions = await parseProviderOptions({
@@ -192,7 +220,7 @@ export class ElevenLabsSpeechModel implements SpeechModelV4 {
       requestBody,
       queryParams,
       warnings,
-      voiceId: voice as ElevenLabsSpeechVoiceId,
+      encodedVoiceId,
     };
   }
 
@@ -200,7 +228,7 @@ export class ElevenLabsSpeechModel implements SpeechModelV4 {
     options: Parameters<SpeechModelV4['doGenerate']>[0],
   ): Promise<Awaited<ReturnType<SpeechModelV4['doGenerate']>>> {
     const currentDate = this.config._internal?.currentDate?.() ?? new Date();
-    const { requestBody, queryParams, warnings, voiceId } =
+    const { requestBody, queryParams, warnings, encodedVoiceId } =
       await this.getArgs(options);
 
     const {
@@ -210,7 +238,7 @@ export class ElevenLabsSpeechModel implements SpeechModelV4 {
     } = await postJsonToApi({
       url: (() => {
         const baseUrl = this.config.url({
-          path: `/v1/text-to-speech/${voiceId}`,
+          path: `/v1/text-to-speech/${encodedVoiceId}`,
           modelId: this.modelId,
         });
         const queryString = new URLSearchParams(queryParams).toString();
