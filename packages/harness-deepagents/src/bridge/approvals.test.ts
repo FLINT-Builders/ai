@@ -38,10 +38,11 @@ describe('buildInterruptOn', () => {
     });
   });
 
-  it('gates write, edit, and execute under allow-reads', () => {
+  it('gates write, edit, delete, and execute under allow-reads', () => {
     expect(buildInterruptOn('allow-reads', undefined)).toEqual({
       write_file: { allowedDecisions: ['approve', 'reject'] },
       edit_file: { allowedDecisions: ['approve', 'reject'] },
+      delete: { allowedDecisions: ['approve', 'reject'] },
       execute: { allowedDecisions: ['approve', 'reject'] },
       task: { allowedDecisions: ['approve', 'reject'] },
       write_todos: { allowedDecisions: ['approve', 'reject'] },

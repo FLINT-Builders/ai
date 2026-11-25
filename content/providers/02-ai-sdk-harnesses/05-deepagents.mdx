@@ -196,12 +196,17 @@ The adapter exposes these Deep Agents built-ins through `agent.tools`:
 - `read`
 - `write`
 - `edit`
+- `delete`
 - `bash`
 - `grep`
 - `glob`
 - `ls`
 - `task`
 - `write_todos`
+
+`delete` is an edit-class tool: it requires approval wherever `write` and `edit`
+do. Deactivating `write` or `edit` through `inactiveTools` also deactivates
+`delete`; with `activeTools`, `delete` must be listed explicitly to stay active.
 
 ## Known Limitations
 

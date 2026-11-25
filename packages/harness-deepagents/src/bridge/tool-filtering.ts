@@ -3,7 +3,7 @@ import {
   ToolMessage,
   type ToolCall,
 } from '@langchain/core/messages';
-import type { createDeepAgent } from 'deepagents';
+import { GENERAL_PURPOSE_SUBAGENT, type createDeepAgent } from 'deepagents';
 import type { StartMessage } from '../deepagents-bridge-protocol';
 import {
   isBuiltinToolIncluded,
@@ -11,9 +11,11 @@ import {
   toCommonName,
 } from './approvals';
 
-type DeepAgentsMiddleware = NonNullable<
-  NonNullable<Parameters<typeof createDeepAgent>[0]>['middleware']
->[number];
+type DeepAgentsParams = NonNullable<Parameters<typeof createDeepAgent>[0]>;
+
+type DeepAgentsMiddleware = NonNullable<DeepAgentsParams['middleware']>[number];
+
+type DeepAgentsSubagent = NonNullable<DeepAgentsParams['subagents']>[number];
 
 type DeepAgentsState = {
   messages: unknown[];
@@ -126,4 +128,22 @@ export function createBuiltinToolFilteringMiddleware(input: {
       },
     },
   } as DeepAgentsMiddleware;
+}
+
+// Deep Agents only merges custom middleware into its default general-purpose
+// subagent by name, so that subagent would run filtered built-ins unchecked.
+export function createBuiltinToolFilteringSubagents(input: {
+  builtinToolFilteringMiddleware: DeepAgentsMiddleware | undefined;
+  tools: DeepAgentsParams['tools'];
+  skills: string[] | undefined;
+}): DeepAgentsSubagent[] | undefined {
+  if (input.builtinToolFilteringMiddleware == null) return undefined;
+  return [
+    {
+      ...GENERAL_PURPOSE_SUBAGENT,
+      tools: input.tools,
+      middleware: [input.builtinToolFilteringMiddleware],
+      ...(input.skills?.length ? { skills: input.skills } : {}),
+    } as DeepAgentsSubagent,
+  ];
 }

@@ -35,6 +35,8 @@ vi.mock('deepagents', () => ({
       getState: async () => ({ tasks: [] }),
     };
   },
+  createFilesystemMiddleware: () => ({ tools: [] }),
+  GENERAL_PURPOSE_SUBAGENT: { name: 'general-purpose' },
   LocalShellBackend: class {},
 }));
 
