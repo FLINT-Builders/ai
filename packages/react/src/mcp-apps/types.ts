@@ -33,6 +33,12 @@ export type MCPAppBridgeHandlers = {
    */
   allowedTools?: string[];
   callTool?: (params: MCPAppToolCallParams) => Promise<unknown> | unknown;
+  /**
+   * Additional `ui://` resources the MCP App may read via `resources/read` and
+   * see in `resources/list` results. Deny-by-default: the app can only access
+   * its own resource (`resourceUri`) unless other uris are listed here.
+   */
+  allowedResources?: string[];
   readResource?: (params: { uri: string }) => Promise<unknown> | unknown;
   listResources?: (params?: unknown) => Promise<unknown> | unknown;
   openLink?: (params: { url: string }) => Promise<unknown> | unknown;

@@ -246,12 +246,25 @@ describe('MCPAppBridge', () => {
     expect(origin).toBe('https://proxy.example');
   });
 
-  async function requestResult(method: string, params: unknown) {
+  async function requestResult(
+    method: string,
+    params: unknown,
+    {
+      allowedResources,
+      listedResources = [],
+    }: { allowedResources?: string[]; listedResources?: string[] } = {},
+  ) {
     const targetWindow = createTargetWindow();
     const bridge = new MCPAppBridge({
       targetWindow,
+      resourceUri: 'ui://app/data',
       handlers: {
+        allowedResources,
         readResource: async p => ({ ok: p }),
+        listResources: async () => ({
+          resources: listedResources.map(uri => ({ uri, name: uri })),
+          nextCursor: 'next',
+        }),
         openLink: async p => ({ ok: p }),
         requestDisplayMode: p => ({ mode: p.mode }),
       },
@@ -273,11 +286,51 @@ describe('MCPAppBridge', () => {
     expect(response.error.message).toContain('ui://');
   });
 
-  it('allows resources/read for ui:// resources', async () => {
+  it('allows resources/read for the app resource', async () => {
     const response = await requestResult('resources/read', {
       uri: 'ui://app/data',
     });
     expect(response.result).toEqual({ ok: { uri: 'ui://app/data' } });
+  });
+
+  it('rejects resources/read for other ui:// resources by default', async () => {
+    const response = await requestResult('resources/read', {
+      uri: 'ui://other/app',
+    });
+    expect(response.result).toBeUndefined();
+    expect(response.error.message).toContain('not app-visible');
+  });
+
+  it('allows resources/read for host allow-listed resources', async () => {
+    const response = await requestResult(
+      'resources/read',
+      { uri: 'ui://other/app' },
+      { allowedResources: ['ui://other/app'] },
+    );
+    expect(response.result).toEqual({ ok: { uri: 'ui://other/app' } });
+  });
+
+  it('filters resources/list results to app-visible resources', async () => {
+    const response = await requestResult(
+      'resources/list',
+      {},
+      {
+        allowedResources: ['ui://shared/app'],
+        listedResources: [
+          'ui://app/data',
+          'ui://app/data-admin',
+          'ui://other/app',
+          'ui://shared/app',
+        ],
+      },
+    );
+    expect(response.result).toEqual({
+      resources: [
+        { uri: 'ui://app/data', name: 'ui://app/data' },
+        { uri: 'ui://shared/app', name: 'ui://shared/app' },
+      ],
+      nextCursor: 'next',
+    });
   });
 
   it('rejects ui/open-link with a javascript: scheme', async () => {

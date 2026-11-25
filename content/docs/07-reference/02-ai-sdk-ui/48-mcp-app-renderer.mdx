@@ -216,16 +216,25 @@ export function MessagePart({ part }: { part: unknown }) {
       description: 'Handles app-initiated `tools/call` requests.',
     },
     {
+      name: 'allowedResources',
+      type: 'string[]',
+      isOptional: true,
+      description:
+        'Additional `ui://` resource URIs the app may read via `resources/read` and see in `resources/list` results. By default the app can only access its own resource (`resourceUri`).',
+    },
+    {
       name: 'readResource',
       type: '(params: { uri: string }) => Promise<unknown> | unknown',
       isOptional: true,
-      description: 'Handles app-initiated `resources/read` requests.',
+      description:
+        'Handles app-initiated `resources/read` requests. Only called for the app resource and `allowedResources`.',
     },
     {
       name: 'listResources',
       type: '(params?: unknown) => Promise<unknown> | unknown',
       isOptional: true,
-      description: 'Handles app-initiated `resources/list` requests.',
+      description:
+        'Handles app-initiated `resources/list` requests. The result must contain a `resources` array; entries outside the app resource and `allowedResources` are removed before it is returned to the app.',
     },
     {
       name: 'openLink',

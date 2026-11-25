@@ -64,18 +64,64 @@ function assertToolCallParams(params: unknown): MCPAppToolCallParams {
 }
 
 /**
- * Validates `resources/read` params and limits reads to `ui://` app resources.
+ * Validates `resources/read` params and limits reads to the app-visible `ui://`
+ * resources. The `uri` is read from the params exactly once so the value that
+ * is authorized is the value that is forwarded.
  */
-function assertResourceReadParams(params: unknown): { uri: string } {
-  if (!isJSONObject(params) || typeof params.uri !== 'string') {
+function assertResourceReadParams(
+  params: unknown,
+  appVisibleResources: ReadonlySet<string>,
+): { uri: string } {
+  if (!isJSONObject(params)) {
     throw new Error('Invalid resources/read params');
   }
-  if (!params.uri.startsWith('ui://')) {
-    throw new Error(
-      `resources/read is limited to ui:// resources: ${params.uri}`,
-    );
+  const uri: unknown = params.uri;
+  if (typeof uri !== 'string') {
+    throw new Error('Invalid resources/read params');
   }
-  return { uri: params.uri };
+  if (!uri.startsWith('ui://')) {
+    throw new Error(`resources/read is limited to ui:// resources: ${uri}`);
+  }
+  if (!appVisibleResources.has(uri)) {
+    throw new Error(`Resource is not app-visible: ${uri}`);
+  }
+  return { uri };
+}
+
+/**
+ * Removes resources the app is not allowed to see from a `resources/list`
+ * result.
+ */
+function filterResourceListResult(
+  result: unknown,
+  appVisibleResources: ReadonlySet<string>,
+): { resources: unknown[]; nextCursor?: string } {
+  if (result == null || typeof result !== 'object') {
+    throw new Error('Invalid resources/list result');
+  }
+  const { resources, nextCursor } = result as {
+    resources?: unknown;
+    nextCursor?: unknown;
+  };
+  if (!Array.isArray(resources)) {
+    throw new Error('Invalid resources/list result');
+  }
+
+  const visibleResources: unknown[] = [];
+  for (const resource of resources) {
+    if (resource == null || typeof resource !== 'object') {
+      continue;
+    }
+    const uri: unknown = (resource as { uri?: unknown }).uri;
+    if (typeof uri === 'string' && appVisibleResources.has(uri)) {
+      visibleResources.push({ ...resource, uri });
+    }
+  }
+
+  return {
+    resources: visibleResources,
+    ...(typeof nextCursor === 'string' ? { nextCursor } : {}),
+  };
 }
 
 /**
@@ -129,6 +175,7 @@ function assertDisplayModeParams(params: unknown): {
  * ```ts
  * const bridge = new MCPAppBridge({
  *   targetWindow: iframe.contentWindow!,
+ *   resourceUri: 'ui://dashboard/app',
  *   handlers: {
  *     allowedTools: ['refreshDashboardData'],
  *     callTool: params => client.callTool(params),
@@ -154,18 +201,25 @@ export class MCPAppBridge {
   constructor({
     targetWindow,
     targetOrigin = '*',
+    resourceUri,
     handlers = {},
     hostInfo = { name: 'ai-sdk-react', version: '1.0.0' },
     hostContext = { displayMode: 'inline' },
   }: {
     targetWindow: Window;
     targetOrigin?: string;
+    /**
+     * The `ui://` resource this app was rendered from. The app may read it via
+     * `resources/read`, in addition to `handlers.allowedResources`.
+     */
+    resourceUri?: string;
     handlers?: MCPAppBridgeHandlers;
     hostInfo?: { name: string; version: string };
     hostContext?: MCPAppHostContext;
   }) {
     this.targetWindow = targetWindow;
     this.targetOrigin = targetOrigin;
+    this.resourceUri = resourceUri;
     this.handlers = handlers;
     this.hostInfo = hostInfo;
     this.hostContext = hostContext;
@@ -173,6 +227,7 @@ export class MCPAppBridge {
 
   private targetWindow: Window;
   private targetOrigin: string;
+  private readonly resourceUri: string | undefined;
   private handlers: MCPAppBridgeHandlers;
   private hostInfo: { name: string; version: string };
   private hostContext: MCPAppHostContext;
@@ -370,19 +425,32 @@ export class MCPAppBridge {
         return this.handlers.callTool(params);
       }
 
-      case 'resources/read':
-        if (this.handlers.readResource == null) {
+      case 'resources/read': {
+        const readResource = this.handlers.readResource;
+        if (readResource == null) {
           throw new Error('No resources/read handler configured');
         }
-        return this.handlers.readResource(
-          assertResourceReadParams(request.params),
+        // Deny-by-default: the (untrusted) MCP App may only read its own
+        // resource and resources the host has explicitly allow-listed.
+        return readResource(
+          assertResourceReadParams(
+            request.params,
+            this.getAppVisibleResources(),
+          ),
         );
+      }
 
-      case 'resources/list':
-        if (this.handlers.listResources == null) {
+      case 'resources/list': {
+        const listResources = this.handlers.listResources;
+        if (listResources == null) {
           throw new Error('No resources/list handler configured');
         }
-        return this.handlers.listResources(request.params);
+        const appVisibleResources = this.getAppVisibleResources();
+        return filterResourceListResult(
+          await listResources(request.params),
+          appVisibleResources,
+        );
+      }
 
       case 'ui/open-link':
         if (this.handlers.openLink == null) {
@@ -406,6 +474,18 @@ export class MCPAppBridge {
       default:
         throw new Error(`Unsupported MCP App method: ${request.method}`);
     }
+  }
+
+  /**
+   * The `ui://` resources the MCP App may read or see listed: its own resource
+   * plus any the host allow-listed.
+   */
+  private getAppVisibleResources(): ReadonlySet<string> {
+    const resources = new Set<string>(this.handlers.allowedResources ?? []);
+    if (this.resourceUri != null) {
+      resources.add(this.resourceUri);
+    }
+    return resources;
   }
 
   /**
