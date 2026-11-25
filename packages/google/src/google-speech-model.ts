@@ -13,6 +13,7 @@ import {
   type Resolvable,
 } from '@ai-sdk/provider-utils';
 import { googleFailedResponseHandler } from './google-error';
+import { getSafePathSegment } from './google-resource-path';
 import { googleSpeechResponseSchema } from './google-speech-api';
 import {
   googleSpeechProviderOptionsSchema,
@@ -171,6 +172,10 @@ export class GoogleSpeechModel implements SpeechModelV4 {
   async doGenerate(
     options: Parameters<SpeechModelV4['doGenerate']>[0],
   ): Promise<Awaited<ReturnType<SpeechModelV4['doGenerate']>>> {
+    const url = `${this.config.baseURL}/models/${getSafePathSegment({
+      argument: 'modelId',
+      value: this.modelId,
+    })}:generateContent`;
     const currentDate = this.config._internal?.currentDate?.() ?? new Date();
     const { requestBody, warnings, outputFormat } = await this.getArgs(options);
 
@@ -179,7 +184,7 @@ export class GoogleSpeechModel implements SpeechModelV4 {
       responseHeaders,
       rawValue: rawResponse,
     } = await postJsonToApi({
-      url: `${this.config.baseURL}/models/${this.modelId}:generateContent`,
+      url,
       headers: combineHeaders(
         this.config.headers ? await resolve(this.config.headers) : undefined,
         options.headers,

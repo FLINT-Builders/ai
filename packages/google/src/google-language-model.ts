@@ -40,7 +40,7 @@ import {
 } from './convert-google-usage';
 import { convertToGoogleMessages } from './convert-to-google-messages';
 import { downloadToolResultFiles } from './download-tool-result-files';
-import { getModelPath } from './get-model-path';
+import { getModelResourcePath } from './google-resource-path';
 import { googleFailedResponseHandler } from './google-error';
 import { sanitizeResponseJsonSchema } from './sanitize-response-json-schema';
 import {
@@ -644,6 +644,9 @@ export class GoogleLanguageModel implements LanguageModelV4 {
   async doGenerate(
     options: LanguageModelV4CallOptions,
   ): Promise<LanguageModelV4GenerateResult> {
+    const url = `${this.config.baseURL}/${getModelResourcePath(
+      this.modelId,
+    )}:generateContent`;
     const {
       args,
       warnings,
@@ -663,9 +666,7 @@ export class GoogleLanguageModel implements LanguageModelV4 {
       value: response,
       rawValue: rawResponse,
     } = await postJsonToApi({
-      url: `${this.config.baseURL}/${getModelPath(
-        this.modelId,
-      )}:generateContent`,
+      url,
       headers: mergedHeaders,
       body: args,
       failedResponseHandler: googleFailedResponseHandler,
@@ -696,6 +697,9 @@ export class GoogleLanguageModel implements LanguageModelV4 {
   async doStream(
     options: LanguageModelV4CallOptions,
   ): Promise<LanguageModelV4StreamResult> {
+    const url = `${this.config.baseURL}/${getModelResourcePath(
+      this.modelId,
+    )}:streamGenerateContent?alt=sse`;
     const {
       args,
       warnings,
@@ -715,9 +719,7 @@ export class GoogleLanguageModel implements LanguageModelV4 {
     );
 
     const { responseHeaders, value: response } = await postJsonToApi({
-      url: `${this.config.baseURL}/${getModelPath(
-        this.modelId,
-      )}:streamGenerateContent?alt=sse`,
+      url,
       headers,
       body: args,
       failedResponseHandler: googleFailedResponseHandler,
