@@ -5,10 +5,98 @@ import {
 } from '@ai-sdk/provider';
 import type { TextStreamPart } from './stream-text-result';
 
-const CHUNKING_REGEXPS = {
-  word: /\S+\s+/m,
-  line: /\n+/m,
+const WHITESPACE = /\s/g;
+const NON_WHITESPACE = /\S/g;
+const NEWLINE = /\n/g;
+const NON_NEWLINE = /[^\n]/g;
+
+function indexOfPattern(pattern: RegExp, text: string, from: number): number {
+  pattern.lastIndex = from;
+  return pattern.exec(text)?.index ?? -1;
+}
+
+/**
+ * Finds the first chunk in the buffer.
+ *
+ * `unscanned` is the suffix of `buffer` that was appended since the previous
+ * scan (or the whole buffer after a chunk was found or `reset` was called).
+ * Returns the length of the first chunk in `buffer`, or `undefined`.
+ */
+type ChunkScanner = {
+  scan(buffer: string, unscanned: string): number | undefined;
+  reset(): void;
 };
+
+/**
+ * Equivalent to the first match of `/\S+\s+/` (including any text before it),
+ * but resumes where the previous scan stopped so that each buffered character
+ * is only scanned once, regardless of how the text is split into deltas.
+ */
+function createWordScanner(): ChunkScanner {
+  // Until a chunk is found, the scanned text is whitespace followed by
+  // non-whitespace. Tracks whether the non-whitespace part has started.
+  let inWord = false;
+
+  return {
+    scan(buffer, unscanned) {
+      let index = 0;
+
+      if (!inWord) {
+        index = indexOfPattern(NON_WHITESPACE, unscanned, 0);
+        if (index === -1) {
+          return undefined;
+        }
+        inWord = true;
+      }
+
+      const whitespaceStart = indexOfPattern(WHITESPACE, unscanned, index);
+      if (whitespaceStart === -1) {
+        return undefined;
+      }
+
+      const whitespaceEnd = indexOfPattern(
+        NON_WHITESPACE,
+        unscanned,
+        whitespaceStart,
+      );
+
+      inWord = false;
+
+      return (
+        buffer.length -
+        unscanned.length +
+        (whitespaceEnd === -1 ? unscanned.length : whitespaceEnd)
+      );
+    },
+    reset() {
+      inWord = false;
+    },
+  };
+}
+
+/**
+ * Equivalent to the first match of `/\n+/` (including any text before it),
+ * scanning only text that has not been scanned before.
+ */
+function createLineScanner(): ChunkScanner {
+  return {
+    scan(buffer, unscanned) {
+      const newlineStart = indexOfPattern(NEWLINE, unscanned, 0);
+      if (newlineStart === -1) {
+        return undefined;
+      }
+
+      const newlineEnd = indexOfPattern(NON_NEWLINE, unscanned, newlineStart);
+
+      return (
+        buffer.length -
+        unscanned.length +
+        (newlineEnd === -1 ? unscanned.length : newlineEnd)
+      );
+    },
+    reset() {},
+  };
+}
 
 // Browsers heavily throttle timers in hidden documents (e.g. background tabs),
 // which would stall the smoothing delay and, through backpressure, the entire
@@ -28,30 +116,9 @@ function isDocumentHidden(): boolean {
  */
 export type ChunkDetector = (buffer: string) => string | undefined | null;
 
-/**
- * Smooths text and reasoning streaming output.
- *
- * @param delayInMs - The delay in milliseconds between each chunk. Defaults to 10ms. Can be set to `null` to skip the delay. The delay is skipped while the document is hidden (e.g. browser background tabs), where timer throttling would otherwise stall the stream.
- * @param chunking - Controls how the text is chunked for streaming. Use "word" to stream word by word (default), "line" to stream line by line, provide a custom RegExp pattern that does not match the empty string for custom chunking, provide an Intl.Segmenter for locale-aware word segmentation (recommended for CJK languages), or provide a custom ChunkDetector function.
- *
- * @returns A transform stream that smooths text streaming output.
- */
-export function smoothStream<TOOLS extends ToolSet>({
-  delayInMs = 10,
-  chunking = 'word',
-  _internal: { delay = originalDelay } = {},
-}: {
-  delayInMs?: number | null;
-  chunking?: 'word' | 'line' | RegExp | ChunkDetector | Intl.Segmenter;
-  /**
-   * Internal. For test use only. May change without notice.
-   */
-  _internal?: {
-    delay?: (delayInMs: number | null) => Promise<void>;
-  };
-} = {}): (options: {
-  tools: TOOLS;
-}) => TransformStream<TextStreamPart<TOOLS>, TextStreamPart<TOOLS>> {
+function createChunkDetector(
+  chunking: RegExp | ChunkDetector | Intl.Segmenter,
+): ChunkDetector {
   let detectChunk: ChunkDetector;
 
   // Check if chunking is an Intl.Segmenter (duck-typing for segment method)
@@ -88,20 +155,8 @@ export function smoothStream<TOOLS extends ToolSet>({
 
       return match;
     };
-  } else {
-    const chunkingRegex =
-      typeof chunking === 'string'
-        ? CHUNKING_REGEXPS[chunking]
-        : chunking instanceof RegExp
-          ? chunking
-          : undefined;
-
-    if (chunkingRegex == null) {
-      throw new InvalidArgumentError({
-        argument: 'chunking',
-        message: `Chunking must be "word", "line", a RegExp, an Intl.Segmenter, or a ChunkDetector function. Received: ${chunking}`,
-      });
-    }
+  } else if (chunking instanceof RegExp) {
+    const chunkingRegex = chunking;
 
     detectChunk = buffer => {
       const lastIndex = chunkingRegex.lastIndex;
@@ -124,9 +179,56 @@ export function smoothStream<TOOLS extends ToolSet>({
 
       return buffer.slice(0, match.index) + match[0];
     };
+  } else {
+    throw new InvalidArgumentError({
+      argument: 'chunking',
+      message: `Chunking must be "word", "line", a RegExp, an Intl.Segmenter, or a ChunkDetector function. Received: ${chunking}`,
+    });
+  }
+
+  return detectChunk;
+}
+
+/**
+ * Smooths text and reasoning streaming output.
+ *
+ * @param delayInMs - The delay in milliseconds between each chunk. Defaults to 10ms. Can be set to `null` to skip the delay. The delay is skipped while the document is hidden (e.g. browser background tabs), where timer throttling would otherwise stall the stream.
+ * @param chunking - Controls how the text is chunked for streaming. Use "word" to stream word by word (default), "line" to stream line by line, provide a custom RegExp pattern that does not match the empty string for custom chunking, provide an Intl.Segmenter for locale-aware word segmentation (recommended for CJK languages), or provide a custom ChunkDetector function. Custom RegExp patterns and ChunkDetector functions are applied to the entire buffered text whenever a delta arrives, so they should run in linear time.
+ *
+ * @returns A transform stream that smooths text streaming output.
+ */
+export function smoothStream<TOOLS extends ToolSet>({
+  delayInMs = 10,
+  chunking = 'word',
+  _internal: { delay = originalDelay } = {},
+}: {
+  delayInMs?: number | null;
+  chunking?: 'word' | 'line' | RegExp | ChunkDetector | Intl.Segmenter;
+  /**
+   * Internal. For test use only. May change without notice.
+   */
+  _internal?: {
+    delay?: (delayInMs: number | null) => Promise<void>;
+  };
+} = {}): (options: {
+  tools: TOOLS;
+}) => TransformStream<TextStreamPart<TOOLS>, TextStreamPart<TOOLS>> {
+  let createScanner: () => ChunkScanner;
+
+  if (chunking === 'word') {
+    createScanner = createWordScanner;
+  } else if (chunking === 'line') {
+    createScanner = createLineScanner;
+  } else {
+    const detectChunk = createChunkDetector(chunking);
+    createScanner = () => ({
+      scan: buffer => detectChunk(buffer)?.length,
+      reset() {},
+    });
   }
 
   return () => {
+    const scanner = createScanner();
     let buffer = '';
     let id = '';
     let type: 'text-delta' | 'reasoning-delta' | undefined = undefined;
@@ -147,6 +249,7 @@ export function smoothStream<TOOLS extends ToolSet>({
         });
         buffer = '';
         providerMetadata = undefined;
+        scanner.reset();
       }
     }
 
@@ -176,11 +279,13 @@ export function smoothStream<TOOLS extends ToolSet>({
           providerMetadata = chunk.providerMetadata;
         }
 
-        let match;
+        let unscanned = chunk.text;
+        let chunkLength;
 
-        while ((match = detectChunk(buffer)) != null) {
-          controller.enqueue({ type, text: match, id });
-          buffer = buffer.slice(match.length);
+        while ((chunkLength = scanner.scan(buffer, unscanned)) != null) {
+          controller.enqueue({ type, text: buffer.slice(0, chunkLength), id });
+          buffer = buffer.slice(chunkLength);
+          unscanned = buffer;
 
           await delay(isDocumentHidden() ? null : delayInMs);
         }
