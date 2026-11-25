@@ -20,6 +20,7 @@ import {
   loadSetting,
   normalizeHeaders,
   resolve,
+  validateHostnameLabel,
   withoutTrailingSlash,
   withUserAgentSuffix,
   type FetchFunction,
@@ -242,7 +243,10 @@ export function createGoogleVertex(
       return withoutTrailingSlash(options.baseURL) ?? EXPRESS_MODE_BASE_URL;
     }
 
-    const region = loadGoogleVertexLocation();
+    const region = validateHostnameLabel({
+      value: loadGoogleVertexLocation(),
+      argument: 'location',
+    });
     const project = loadGoogleVertexProject();
 
     const getHost = () => {

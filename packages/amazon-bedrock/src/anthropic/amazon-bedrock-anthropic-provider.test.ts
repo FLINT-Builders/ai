@@ -13,6 +13,7 @@ vi.mock('@ai-sdk/provider-utils', async () => {
     WORKFLOW_SERIALIZE: (actual as any).WORKFLOW_SERIALIZE,
     WORKFLOW_DESERIALIZE: (actual as any).WORKFLOW_DESERIALIZE,
     serializeModelOptions: (actual as any).serializeModelOptions,
+    validateHostnameLabel: (actual as any).validateHostnameLabel,
     loadOptionalSetting: vi.fn().mockImplementation(({ settingValue }) => {
       // Return undefined for API key to test SigV4 flow
       if (settingValue === undefined) return undefined;

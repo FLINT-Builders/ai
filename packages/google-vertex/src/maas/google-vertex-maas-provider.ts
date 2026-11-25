@@ -5,6 +5,7 @@ import {
 import {
   loadOptionalSetting,
   loadSetting,
+  validateHostnameLabel,
   withoutTrailingSlash,
   type FetchFunction,
   type Resolvable,
@@ -100,7 +101,10 @@ export function createGoogleVertexMaas(
 
   const constructBaseURL = () => {
     const projectId = loadProject();
-    const location = loadLocation() ?? 'global';
+    const location = validateHostnameLabel({
+      value: loadLocation() ?? 'global',
+      argument: 'location',
+    });
 
     return `https://${getHost(location)}/v1/projects/${projectId}/locations/${location}/endpoints/openapi`;
   };

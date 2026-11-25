@@ -1,5 +1,6 @@
 import {
   loadOptionalSetting,
+  validateHostnameLabel,
   withoutTrailingSlash,
 } from '@ai-sdk/provider-utils';
 
@@ -40,7 +41,10 @@ export function resolveAmazonBedrockBaseURL({
     return withoutTrailingSlash(resolvedBaseURL) ?? resolvedBaseURL;
   }
 
-  const region = getRegion();
+  const region = validateHostnameLabel({
+    value: getRegion(),
+    argument: 'region',
+  });
   const dnsSuffix =
     AWS_PARTITION_DNS_SUFFIXES.find(({ regionPrefix }) =>
       region.startsWith(regionPrefix),

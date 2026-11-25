@@ -8,6 +8,7 @@ import {
 import {
   loadOptionalSetting,
   loadSetting,
+  validateHostnameLabel,
   withoutTrailingSlash,
   type FetchFunction,
 } from '@ai-sdk/provider-utils';
@@ -209,11 +210,14 @@ export function createAnthropicAws(
 
   const getBaseURL = (): string =>
     withoutTrailingSlash(options.baseURL) ??
-    `https://aws-external-anthropic.${loadSetting({
-      settingValue: options.region,
-      settingName: 'region',
-      environmentVariableName: 'AWS_REGION',
-      description: 'AWS region',
+    `https://aws-external-anthropic.${validateHostnameLabel({
+      value: loadSetting({
+        settingValue: options.region,
+        settingName: 'region',
+        environmentVariableName: 'AWS_REGION',
+        description: 'AWS region',
+      }),
+      argument: 'region',
     })}.api.aws/v1`;
 
   const getHeaders = (): Record<string, string | undefined> => ({

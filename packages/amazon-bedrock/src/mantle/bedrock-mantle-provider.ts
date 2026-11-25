@@ -19,6 +19,7 @@ import {
   createSigV4FetchFunction,
   type AmazonBedrockCredentials,
 } from '../amazon-bedrock-sigv4-fetch';
+import { loadAmazonBedrockRegion } from '../load-amazon-bedrock-region';
 import type {
   BedrockMantleChatModelId,
   BedrockMantleResponsesModelId,
@@ -137,12 +138,7 @@ export function createBedrockMantle(
     ? createApiKeyFetchFunction(apiKey, options.fetch)
     : createSigV4FetchFunction(
         async () => {
-          const region = loadSetting({
-            settingValue: options.region,
-            settingName: 'region',
-            environmentVariableName: 'AWS_REGION',
-            description: 'AWS region',
-          });
+          const region = loadAmazonBedrockRegion(options.region);
 
           // If a credential provider is provided, use it to get the credentials.
           if (options.credentialProvider) {
@@ -218,12 +214,7 @@ export function createBedrockMantle(
   const getBaseURL = (): string =>
     withoutTrailingSlash(
       options.baseURL ??
-        `https://bedrock-mantle.${loadSetting({
-          settingValue: options.region,
-          settingName: 'region',
-          environmentVariableName: 'AWS_REGION',
-          description: 'AWS region',
-        })}.api.aws/v1`,
+        `https://bedrock-mantle.${loadAmazonBedrockRegion(options.region)}.api.aws/v1`,
     ) ?? 'https://bedrock-mantle.us-east-1.api.aws/v1';
 
   const getHeaders = (): Record<string, string | undefined> =>

@@ -16,6 +16,7 @@ import {
   resolve,
   safeParseJSON,
   serializeModelOptions,
+  validateHostnameLabel,
   waitForWebSocketBufferDrain,
   WORKFLOW_DESERIALIZE,
   WORKFLOW_SERIALIZE,
@@ -49,7 +50,11 @@ function isLiveTranscriptionModelId(modelId: string): boolean {
 }
 
 /** Regional Vertex hostname (mirrors the provider's base-URL host rules). */
-function vertexHost(location: string): string {
+function vertexHost(configuredLocation: string): string {
+  const location = validateHostnameLabel({
+    value: configuredLocation,
+    argument: 'location',
+  });
   if (location === 'global') return 'aiplatform.googleapis.com';
   if (location === 'eu' || location === 'us') {
     return `aiplatform.${location}.rep.googleapis.com`;
