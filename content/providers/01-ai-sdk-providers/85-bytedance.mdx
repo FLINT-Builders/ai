@@ -183,7 +183,9 @@ type them with `ByteDanceImageModelOptions`.
 
 <Note>
   Additional ModelArk fields can also be passed through
-  `providerOptions.bytedance` and are validated by ModelArk.
+  `providerOptions.bytedance` and are validated by ModelArk. Fields the SDK sets
+  itself (such as `model`, `prompt`, `image`, `size`, `output_format`, and
+  `response_format`) cannot be overridden this way.
 </Note>
 
 ### Image Model Capabilities

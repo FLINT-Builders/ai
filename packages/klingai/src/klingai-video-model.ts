@@ -193,6 +193,38 @@ const HANDLED_PROVIDER_OPTIONS = new Set([
   'watermarkEnabled',
 ]);
 
+/**
+ * Request body fields the SDK sets itself (across all modes). Additional
+ * provider options are passed through to the API, but must never replace
+ * these fields.
+ */
+const SDK_REQUEST_FIELDS = new Set([
+  'model_name',
+  'prompt',
+  'negative_prompt',
+  'image',
+  'image_tail',
+  'image_list',
+  'image_url',
+  'video_url',
+  'character_orientation',
+  'keep_original_sound',
+  'sound',
+  'cfg_scale',
+  'mode',
+  'camera_control',
+  'static_mask',
+  'dynamic_masks',
+  'aspect_ratio',
+  'duration',
+  'multi_shot',
+  'shot_type',
+  'multi_prompt',
+  'element_list',
+  'voice_list',
+  'watermark_info',
+]);
+
 interface KlingAIVideoModelConfig {
   provider: string;
   baseURL: string;
@@ -808,7 +840,7 @@ export class KlingAIVideoModel implements VideoModelV4 {
   ): void {
     if (!klingaiOptions) return;
     for (const [key, value] of Object.entries(klingaiOptions)) {
-      if (!HANDLED_PROVIDER_OPTIONS.has(key)) {
+      if (!HANDLED_PROVIDER_OPTIONS.has(key) && !SDK_REQUEST_FIELDS.has(key)) {
         body[key] = value;
       }
     }

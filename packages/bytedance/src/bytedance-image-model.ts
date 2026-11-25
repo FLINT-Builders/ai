@@ -30,6 +30,21 @@ const HANDLED_PROVIDER_OPTIONS = new Set([
   'optimizePromptMode',
 ]);
 
+// Request body fields the SDK sets itself. Additional provider options are
+// passed through to the API, but must never replace these fields.
+const SDK_REQUEST_FIELDS = new Set([
+  'model',
+  'prompt',
+  'image',
+  'size',
+  'response_format',
+  'watermark',
+  'output_format',
+  'sequential_image_generation',
+  'sequential_image_generation_options',
+  'optimize_prompt_options',
+]);
+
 interface ByteDanceImageModelConfig extends ByteDanceConfig {
   _internal?: {
     currentDate?: () => Date;
@@ -146,7 +161,10 @@ export class ByteDanceImageModel implements ImageModelV4 {
       }
       // Pass through any additional options not explicitly handled above.
       for (const [key, value] of Object.entries(byteDanceOptions)) {
-        if (!HANDLED_PROVIDER_OPTIONS.has(key)) {
+        if (
+          !HANDLED_PROVIDER_OPTIONS.has(key) &&
+          !SDK_REQUEST_FIELDS.has(key)
+        ) {
           body[key] = value;
         }
       }
