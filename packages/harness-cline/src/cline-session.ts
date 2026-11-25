@@ -25,6 +25,7 @@ import {
   type AgentMessage,
   type AgentModel,
   type AgentRunResult,
+  type AgentTool,
 } from '@cline/agents';
 import { Llms } from '@cline/core';
 import { createClineMcpRuntime } from './cline-mcp';
@@ -156,6 +157,36 @@ function clineBuiltinToolRequiresApproval(input: {
   if (input.permissionMode === 'allow-all') return false;
   if (input.permissionMode === 'allow-edits') return input.kind === 'bash';
   return input.kind === 'edit' || input.kind === 'bash';
+}
+
+/**
+ * Where the tool registered under a name comes from. `host` tools are
+ * executed and approved by the harness framework; `mcp` tools run inside
+ * this host process against the configured MCP servers.
+ */
+type ClineToolOrigin =
+  | { readonly type: 'builtin'; readonly kind: 'readonly' | 'edit' | 'bash' }
+  | { readonly type: 'mcp' }
+  | { readonly type: 'host' }
+  | { readonly type: 'structured-output' };
+
+function clineToolRequiresApproval(input: {
+  permissionMode: HarnessV1PermissionMode;
+  origin: ClineToolOrigin;
+}): boolean {
+  if (input.permissionMode === 'allow-all') return false;
+  switch (input.origin.type) {
+    case 'builtin':
+      return clineBuiltinToolRequiresApproval({
+        permissionMode: input.permissionMode,
+        kind: input.origin.kind,
+      });
+    case 'host':
+    case 'structured-output':
+      return false;
+    case 'mcp':
+      return true;
+  }
 }
 
 function buildSystemPrompt(input: {
@@ -386,11 +417,22 @@ export async function createClineSession(
     });
   }
 
-  function requestBuiltinToolApproval(toolCall: {
+  function requestRuntimeToolApproval(toolCall: {
     toolCallId: string;
     toolName: string;
     input: unknown;
   }): Promise<{ approved: boolean; reason?: string }> {
+    /*
+     * The approval id is the tool call id, and the app sees the tool call
+     * that was first surfaced under it. A later call reusing that id would be
+     * approved against a different tool name or input, so refuse it.
+     */
+    if (translatorState?.emittedToolCalls.has(toolCall.toolCallId)) {
+      return Promise.resolve({
+        approved: false,
+        reason: `Tool call id ${JSON.stringify(toolCall.toolCallId)} was already used in this turn.`,
+      });
+    }
     if (translatorState && currentEmit) {
       for (const part of toolApprovalParts(translatorState, toolCall)) {
         currentEmit(part);
@@ -409,6 +451,87 @@ export async function createClineSession(
   }): void {
     unsubscribe?.();
     unsubscribe = undefined;
+
+    /*
+     * The runtime registers tools by name, so a later tool replaces an
+     * earlier one with the same name. Resolve that here and hand the runtime
+     * exactly one tool per name, so the origin each approval decision is
+     * based on is the origin of the tool that actually executes.
+     */
+    const toolsByName = new Map<
+      string,
+      // `any` matches the runtime's own `tools?: readonly AgentTool<any, any>[]`.
+      { tool: AgentTool<any, any>; origin: ClineToolOrigin }
+    >();
+    const addTools = (
+      tools: ReadonlyArray<AgentTool<any, any>>,
+      originOf: (tool: AgentTool) => ClineToolOrigin,
+    ) => {
+      for (const tool of tools) {
+        toolsByName.delete(tool.name);
+        toolsByName.set(tool.name, { tool, origin: originOf(tool) });
+      }
+    };
+    const builtinOrigin = (tool: AgentTool): ClineToolOrigin => ({
+      type: 'builtin',
+      kind: isClineBuiltinToolName(tool.name)
+        ? CLINE_NATIVE_TOOL_KINDS[tool.name]
+        : 'bash',
+    });
+    addTools(
+      buildBuiltinAgentTools({
+        ops,
+        activeNames: activeBuiltinNames,
+        pendingQuestions,
+        pendingQuestionResults,
+      }),
+      builtinOrigin,
+    );
+    if (
+      rebuildInput.skillsRuntime.tool &&
+      activeBuiltinNames.includes('skills')
+    ) {
+      addTools([rebuildInput.skillsRuntime.tool], builtinOrigin);
+    }
+    addTools(mcpRuntime.tools, () => ({ type: 'mcp' }));
+    addTools(
+      buildUserAgentTools({
+        specs: rebuildInput.userTools,
+        pendingToolResults,
+      }),
+      () => ({ type: 'host' }),
+    );
+    if (
+      rebuildInput.responseFormat?.type === 'json' &&
+      rebuildInput.responseFormat.schema != null
+    ) {
+      addTools(
+        [
+          createTool({
+            name: 'structured_output',
+            description:
+              rebuildInput.responseFormat.description ??
+              'Return the final structured output.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                output: rebuildInput.responseFormat.schema,
+              },
+              required: ['output'],
+              additionalProperties: false,
+            },
+            lifecycle: { completesRun: true },
+            execute: async ({ output }: { output: unknown }) =>
+              JSON.stringify(output),
+          }),
+        ],
+        () => ({ type: 'structured-output' }),
+      );
+    }
+    const toolOrigins: ReadonlyMap<string, ClineToolOrigin> = new Map(
+      [...toolsByName].map(([name, { origin }]) => [name, origin]),
+    );
+
     agent = new Agent({
       model: agentModel.model,
       ...(activeModelId
@@ -434,45 +557,7 @@ export async function createClineSession(
       ...(input.settings.maxIterations !== undefined
         ? { maxIterations: input.settings.maxIterations }
         : {}),
-      tools: [
-        ...buildBuiltinAgentTools({
-          ops,
-          activeNames: activeBuiltinNames,
-          pendingQuestions,
-          pendingQuestionResults,
-        }),
-        ...(rebuildInput.skillsRuntime.tool &&
-        activeBuiltinNames.includes('skills')
-          ? [rebuildInput.skillsRuntime.tool]
-          : []),
-        ...mcpRuntime.tools,
-        ...buildUserAgentTools({
-          specs: rebuildInput.userTools,
-          pendingToolResults,
-        }),
-        ...(rebuildInput.responseFormat?.type === 'json' &&
-        rebuildInput.responseFormat.schema != null
-          ? [
-              createTool({
-                name: 'structured_output',
-                description:
-                  rebuildInput.responseFormat.description ??
-                  'Return the final structured output.',
-                inputSchema: {
-                  type: 'object',
-                  properties: {
-                    output: rebuildInput.responseFormat.schema,
-                  },
-                  required: ['output'],
-                  additionalProperties: false,
-                },
-                lifecycle: { completesRun: true },
-                execute: async ({ output }: { output: unknown }) =>
-                  JSON.stringify(output),
-              }),
-            ]
-          : []),
-      ],
+      tools: [...toolsByName.values()].map(({ tool }) => tool),
       ...(rebuildInput.responseFormat?.type === 'json'
         ? { completionPolicy: { requireCompletionTool: true } }
         : {}),
@@ -482,27 +567,34 @@ export async function createClineSession(
           return toolResult == null ? undefined : { result: toolResult };
         },
       },
-      // Built-in tools whose kind requires approval under the session's
-      // permission mode are marked `autoApprove: false`; the runtime then
-      // routes them through `requestToolApproval` below. User tools are
-      // approved by the harness framework, never by the adapter.
-      toolPolicies: Object.fromEntries(
-        activeBuiltinNames
-          .filter(name =>
-            clineBuiltinToolRequiresApproval({
-              permissionMode,
-              kind: CLINE_NATIVE_TOOL_KINDS[name],
-            }),
-          )
-          .map(name => [name, { autoApprove: false }]),
-      ),
+      /*
+       * Outside `allow-all`, every tool requires approval unless its origin
+       * is known not to: read-only built-ins under the permission mode, and
+       * host tools, which the harness framework approves itself. This keeps
+       * MCP tools and any tool the adapter cannot classify behind the app's
+       * approval.
+       */
+      toolPolicies:
+        permissionMode === 'allow-all'
+          ? {}
+          : {
+              '*': { autoApprove: false },
+              ...Object.fromEntries(
+                [...toolOrigins]
+                  .filter(
+                    ([, origin]) =>
+                      !clineToolRequiresApproval({ permissionMode, origin }),
+                  )
+                  .map(([name]) => [name, { autoApprove: true }]),
+              ),
+            },
       requestToolApproval: request => {
-        if (!isClineBuiltinToolName(request.toolName)) {
+        if (toolOrigins.get(request.toolName)?.type === 'host') {
           // Custom host-executed tool approvals are handled by the framework
           // before results are submitted back; the adapter never gates them.
           return { approved: true };
         }
-        return requestBuiltinToolApproval({
+        return requestRuntimeToolApproval({
           toolCallId: request.toolCallId,
           toolName: request.toolName,
           input: request.input,
