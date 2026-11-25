@@ -450,6 +450,91 @@ describe('OpenCode bridge turn settlement', () => {
     });
   });
 
+  it.each(['allow-reads', 'allow-edits'] as const)(
+    'requests host approval for webfetch in %s mode',
+    async permissionMode => {
+      const emitted: Array<Record<string, unknown>> = [];
+      const requestToolApproval = vi.fn(async () => ({
+        approved: false,
+        reason: 'blocked',
+      }));
+      bridgeMock.start = {
+        type: 'start',
+        operation: 'prompt',
+        prompt: 'Fetch a page.',
+        permissionMode,
+      };
+      bridgeMock.turn = {
+        emit: (event: Record<string, unknown>) => emitted.push(event),
+        requestToolResult: vi.fn(),
+        requestToolApproval,
+        experimental_userMessages: createUserMessages(),
+        abortSignal: new AbortController().signal,
+        firstTurn: true,
+        bridgeLog: vi.fn(),
+        emitWarning: vi.fn(),
+        emitError: vi.fn(),
+      };
+      sdkMock.client = {
+        mcp: { status: vi.fn(async () => ({ data: {} })) },
+        session: {
+          create: vi.fn(async () => ({ data: { id: 'session-1' } })),
+          get: vi.fn(async () => ({ data: {} })),
+          messages: vi.fn(async () => ({ data: [] })),
+          promptAsync: vi.fn(async () => ({ data: {} })),
+        },
+        event: {
+          subscribe: vi.fn(async () => ({
+            stream: {
+              async *[Symbol.asyncIterator]() {
+                yield {
+                  type: 'permission.v2.asked',
+                  properties: {
+                    id: 'webfetch-request',
+                    sessionID: 'session-1',
+                    action: 'webfetch',
+                    resources: ['https://collector.example/inbox?note=x'],
+                    source: { callID: 'webfetch-call' },
+                  },
+                };
+                yield {
+                  type: 'session.next.step.failed',
+                  properties: {
+                    sessionID: 'session-1',
+                    error: 'end permission test turn',
+                  },
+                };
+              },
+            },
+          })),
+        },
+        v2: {
+          session: {
+            context: vi.fn(async () => ({ data: [] })),
+            permission: { reply: permissionReplyMock },
+            switchModel: vi.fn(async () => ({ data: {} })),
+          },
+        },
+      };
+      setBridgeArgv();
+
+      await import('./index');
+
+      expect(requestToolApproval).toHaveBeenCalledWith('webfetch-request');
+      expect(emitted).toContainEqual({
+        type: 'tool-approval-request',
+        approvalId: 'webfetch-request',
+        toolCallId: 'webfetch-call',
+      });
+      expect(permissionReplyMock).toHaveBeenCalledWith({
+        sessionID: 'session-1',
+        requestID: 'webfetch-request',
+        reply: 'reject',
+        message: 'blocked',
+      });
+    },
+  );
+
   it('passes headers to a direct provider', async () => {
     const userMessages = createUserMessages();
     bridgeMock.start = {
