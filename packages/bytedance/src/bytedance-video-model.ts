@@ -41,6 +41,23 @@ const HANDLED_PROVIDER_OPTIONS = new Set([
   'pollTimeoutMs',
 ]);
 
+// Request body fields the SDK sets itself. Additional provider options are
+// passed through to the API, but must never replace these fields.
+const SDK_REQUEST_FIELDS = new Set([
+  'model',
+  'content',
+  'ratio',
+  'duration',
+  'seed',
+  'resolution',
+  'generate_audio',
+  'watermark',
+  'camera_fixed',
+  'return_last_frame',
+  'service_tier',
+  'draft',
+]);
+
 const RESOLUTION_MAP: Record<string, string> = {
   '864x496': '480p',
   '496x864': '480p',
@@ -338,7 +355,10 @@ export class ByteDanceVideoModel implements VideoModelV4 {
       }
       // Pass through any additional options not explicitly handled
       for (const [key, value] of Object.entries(byteDanceOptions)) {
-        if (!HANDLED_PROVIDER_OPTIONS.has(key)) {
+        if (
+          !HANDLED_PROVIDER_OPTIONS.has(key) &&
+          !SDK_REQUEST_FIELDS.has(key)
+        ) {
           body[key] = value;
         }
       }
