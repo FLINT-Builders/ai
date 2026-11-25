@@ -87,7 +87,11 @@ Settings:
 
 - `auth`: authentication mode (`auto`, `direct`, or `ai-gateway`) or an
   isolated authentication environment.
-- `mcpServers`: MCP server definitions keyed by server name.
+- `mcpServers`: MCP server definitions keyed by server name. MCP servers run
+  in the host process, not in the sandbox, with the host's network access and
+  the credentials in their configuration. When `permissionMode` is
+  `allow-reads` or `allow-edits`, every MCP tool call emits a tool approval
+  request and runs only after it is approved.
 - `providerId`: Cline LLM provider id (e.g. `anthropic`, `openai`, `gemini`).
   When omitted, direct authentication uses the Cline backend. Explicit custom
   providers apply only to direct authentication.
@@ -180,8 +184,8 @@ The adapter exposes these built-ins through `agent.tools`:
 All built-ins are sandbox-backed: `bash` runs in the session working
 directory, and relative file paths resolve against it.
 
-Cline supports built-in tool approval requests when `permissionMode` is
-`allow-reads` or `allow-edits`, native built-in tool filtering via
+Cline supports built-in and MCP tool approval requests when `permissionMode`
+is `allow-reads` or `allow-edits`, native built-in tool filtering via
 `activeTools`/`inactiveTools`, and host-executed AI SDK tool approvals.
 
 ## Skills

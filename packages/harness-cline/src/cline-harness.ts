@@ -29,6 +29,9 @@ export type ClineHarnessSettings = {
   /**
    * MCP server definitions keyed by server name. Each definition uses the
    * underlying runtime's native MCP server configuration format.
+   *
+   * MCP servers run in the host process, not in the sandbox. Outside
+   * `allow-all`, every MCP tool call requires approval.
    */
   readonly mcpServers?: Record<string, unknown>;
   /**
