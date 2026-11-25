@@ -5,6 +5,7 @@ import {
 } from '@ai-sdk/provider';
 import {
   loadOptionalSetting,
+  validateHostnameLabel,
   withoutTrailingSlash,
   type FetchFunction,
   type Resolvable,
@@ -178,10 +179,22 @@ export function createGoogleVertexAnthropic(
   options: GoogleVertexAnthropicProviderSettings = {},
 ): GoogleVertexAnthropicProvider {
   const getBaseURL = () => {
-    const location = loadOptionalSetting({
+    const baseURL = withoutTrailingSlash(options.baseURL);
+    if (baseURL != null) {
+      return baseURL;
+    }
+
+    const configuredLocation = loadOptionalSetting({
       settingValue: options.location,
       environmentVariableName: 'GOOGLE_VERTEX_LOCATION',
     });
+    const location =
+      configuredLocation == null
+        ? configuredLocation
+        : validateHostnameLabel({
+            value: configuredLocation,
+            argument: 'location',
+          });
     const project = loadOptionalSetting({
       settingValue: options.project,
       environmentVariableName: 'GOOGLE_VERTEX_PROJECT',
@@ -197,10 +210,7 @@ export function createGoogleVertexAnthropic(
       }
     };
 
-    return (
-      withoutTrailingSlash(options.baseURL) ??
-      `https://${getHost()}/v1/projects/${project}/locations/${location}/publishers/anthropic/models`
-    );
+    return `https://${getHost()}/v1/projects/${project}/locations/${location}/publishers/anthropic/models`;
   };
 
   const createChatModel = (modelId: GoogleVertexAnthropicModelId) =>

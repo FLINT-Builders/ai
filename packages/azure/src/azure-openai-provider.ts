@@ -21,6 +21,7 @@ import {
   loadApiKey,
   loadSetting,
   normalizeHeaders,
+  validateHostnameLabel,
   withoutTrailingSlash,
   withUserAgentSuffix,
   type FetchFunction,
@@ -235,11 +236,14 @@ export function createAzure(
     : options.fetch;
 
   const getResourceName = () =>
-    loadSetting({
-      settingValue: options.resourceName,
-      settingName: 'resourceName',
-      environmentVariableName: 'AZURE_RESOURCE_NAME',
-      description: 'Azure OpenAI resource name',
+    validateHostnameLabel({
+      value: loadSetting({
+        settingValue: options.resourceName,
+        settingName: 'resourceName',
+        environmentVariableName: 'AZURE_RESOURCE_NAME',
+        description: 'Azure OpenAI resource name',
+      }),
+      argument: 'resourceName',
     });
 
   const apiVersion = options.apiVersion ?? 'v1';

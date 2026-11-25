@@ -7,6 +7,7 @@ import {
   postJsonToApi,
   resolve,
   serializeModelOptions,
+  validateHostnameLabel,
   WORKFLOW_DESERIALIZE,
   WORKFLOW_SERIALIZE,
   type FetchFunction,
@@ -105,7 +106,10 @@ export class GoogleVertexTranscriptionModel implements TranscriptionModelV4 {
       }
     }
 
-    const region = googleOptions?.region ?? this.config.location;
+    const region = validateHostnameLabel({
+      value: googleOptions?.region ?? this.config.location,
+      argument: 'region',
+    });
     const languageCodes = googleOptions?.languageCodes ?? ['auto'];
 
     // The recognize API takes base64-encoded audio in the `content` field. A
