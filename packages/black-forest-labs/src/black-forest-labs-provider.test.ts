@@ -34,11 +34,11 @@ const server = createTestServer({
       type: 'json-value',
       body: {
         id: 'req-123',
-        polling_url: 'https://api.example.com/video-poll',
+        polling_url: 'https://api.example.com/v1/get_result',
       },
     },
   },
-  'https://api.example.com/video-poll': {
+  'https://api.example.com/v1/get_result': {
     response: {
       type: 'json-value',
       body: {
@@ -211,7 +211,7 @@ describe('BlackForestLabs provider', () => {
   });
 
   it('uses provider polling options for video timeout behavior', async () => {
-    server.urls['https://api.example.com/video-poll'].response = ({
+    server.urls['https://api.example.com/v1/get_result'].response = ({
       callNumber,
     }) => ({
       type: 'json-value',
