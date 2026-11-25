@@ -508,6 +508,8 @@ Don't ship a new policy straight to enforce. The first version of any policy alm
 
 `shadow(approval, opts)` wraps any `ToolApprovalConfiguration`. The wrapped policy is evaluated normally and the decision is reported via `onDecision`, but the SDK is told the call is approved regardless of what the policy said.
 
+`shadow` never weakens a tool's own `needsApproval`. In shadow mode, a tool whose `needsApproval` requires approval still waits for a human. With `enforce: true`, any call the policy has no opinion on (`undefined` or `not-applicable`) is decided by the tool's `needsApproval`, the same as without the wrapper.
+
 ```ts
 import { opaPolicy, shadow, wasmPolicyClient } from '@ai-sdk/policy-opa';
 
@@ -540,7 +542,7 @@ await generateText({ model, tools, toolApproval, prompt });
 4. Fix anything wrong with the policy. Iterate from step 2.
 5. When the only `denied` / `user-approval` events are ones you actually want, flip `enforce: true`. The policy is now load-bearing.
 
-Each event carries both the policy's verdict (`decision`) and what the SDK actually acted on (`effective`). In shadow mode they disagree whenever the policy returned anything other than approved; in enforce mode they always agree. Compare them in your dashboard to spot drift.
+Each event carries both the policy's verdict (`decision`) and what the SDK actually acted on (`effective`). In shadow mode they disagree whenever the policy returned anything other than approved, and `effective` is `user-approval` when the tool's own `needsApproval` requires it. In enforce mode they agree, except that a `not-applicable` decision becomes `user-approval` when the tool's `needsApproval` requires it. Compare them in your dashboard to spot drift.
 
 ### Telemetry semantics
 
@@ -606,6 +608,7 @@ Three useful defaults:
 - `'user-approval'` (the default): uncovered tools require a human. Right choice when you trust the discovery source but want a safety net for tools you forgot about.
 - `'denied'`: uncovered tools are blocked. Right choice for hard allowlist mode: the OPA policy enumerates what's allowed; everything else is rejected before the model can call it.
 - `'approved'`: uncovered tools are allowed. Right choice only when the discovery source is fully trusted (rare; usually the wrong call for MCP).
+- `'not-applicable'`: no opinion. Uncovered tools are gated only by their own `needsApproval`.
 
 Despite the name, the helper works on any `Record<string, Tool>`, not just MCP-discovered tools.
 
@@ -615,7 +618,7 @@ Everything is exported from the package root, `@ai-sdk/policy-opa`.
 
 ### Engine-neutral core
 
-- `shadow(approval, opts?)`: wrap any `ToolApprovalConfiguration` so the policy is evaluated and reported via `onDecision`, but the SDK acts as if every call was approved. Flip `opts.enforce: true` to graduate to real enforcement. Recommended starting point for any new policy.
+- `shadow(approval, opts?)`: wrap any `ToolApprovalConfiguration` so the policy is evaluated and reported via `onDecision`, but the SDK acts as if every call was approved (tools whose own `needsApproval` requires it still wait for a human). Flip `opts.enforce: true` to graduate to real enforcement. Recommended starting point for any new policy.
 - `wrapMcpTools(tools, approval, opts?)`: bundle a discovered tool set with a fallback approval policy so the resulting `toolApproval` configuration is total over the discovered surface. `opts.default` controls what happens to tools the supplied approval does not match (`'user-approval'` by default; use `'denied'` for hard allowlist mode).
 - `PolicyClient`: interface implemented by the OPA backends. Use directly if you want to plug in a non-OPA engine.
 - Helper types: `PolicyDecision`, `WrappedMcpTools`, `PolicyDecisionEvent`.

@@ -1,11 +1,27 @@
-import type {
-  Context,
-  ModelMessage,
-  Tool,
-  ToolSet,
+import {
+  validateTypes,
+  type Context,
+  type FlexibleSchema,
+  type ModelMessage,
+  type Tool,
+  type ToolSet,
 } from '@ai-sdk/provider-utils';
 import type { ToolApprovalConfiguration } from 'ai';
 import type { PolicyDecision } from './policy-decision';
+
+interface ApprovalTool {
+  contextSchema?: FlexibleSchema<unknown>;
+  needsApproval?:
+    | boolean
+    | ((
+        input: unknown,
+        options: {
+          toolCallId: string;
+          messages: ModelMessage[];
+          context: unknown;
+        },
+      ) => boolean | PromiseLike<boolean>);
+}
 
 interface GenericApprovalArgs {
   toolCall: { toolName: string; toolCallId: string; input: unknown };
@@ -30,8 +46,11 @@ export interface PolicyDecisionEvent {
   decision: PolicyDecision;
   /** Whether the SDK will act on `decision` (true) or override to allow (false). */
   enforced: boolean;
-  /** The decision the SDK actually acts on. Equals `decision` when enforcing,
-   *  `{ type: 'approved' }` in shadow mode. */
+  /** The decision the SDK actually acts on. When enforcing, equals `decision`
+   *  unless the policy had no opinion, in which case it is the tool's own
+   *  `needsApproval` result. In shadow mode it is `{ type: 'user-approval' }`
+   *  when the tool's `needsApproval` requires it, otherwise
+   *  `{ type: 'approved' }`. */
   effective: PolicyDecision;
   /** ISO 8601 timestamp of the evaluation. */
   timestamp: string;
@@ -41,6 +60,11 @@ export interface PolicyDecisionEvent {
  * Wrap a `toolApproval` in shadow mode so the policy is evaluated and the
  * decision is reported via `onDecision`, but the SDK is told the call is
  * approved regardless of what the policy said.
+ *
+ * A tool's own `needsApproval` is never weakened by the wrapper. In shadow
+ * mode, a tool whose `needsApproval` requires it still gets
+ * `{ type: 'user-approval' }`. When enforcing and the policy has no opinion
+ * (`undefined` or `not-applicable`), the tool's `needsApproval` decides.
  *
  * Use this when you are rolling out a new policy and want to see what it
  * *would* deny before letting it actually deny anything in production. Wire
@@ -78,7 +102,8 @@ export function shadow<
   approval: ToolApprovalConfiguration<TOOLS & ToolSet, RUNTIME_CONTEXT>,
   opts: {
     /** When true, the SDK acts on the policy's decision. When false (default),
-     *  the SDK is told every call is approved. */
+     *  the SDK is told every call is approved, except calls the tool's own
+     *  `needsApproval` holds for user approval. */
     enforce?: boolean;
     /** Invoked once per evaluated tool call with the captured decision. */
     onDecision?: (event: PolicyDecisionEvent) => void | Promise<void>;
@@ -88,10 +113,24 @@ export function shadow<
   const { onDecision } = opts;
 
   const wrapped = async (args: GenericApprovalArgs) => {
-    const raw = await evaluateApproval(approval, args);
+    const tool = getOwn(args.tools, args.toolCall.toolName) as
+      | ApprovalTool
+      | undefined;
+
+    const raw = await evaluateApproval(approval, args, tool);
     const decision = normalizePolicyDecision(raw);
 
-    const effective: PolicyDecision = enforce ? decision : { type: 'approved' };
+    let effective: PolicyDecision;
+    if (enforce) {
+      effective =
+        decision.type === 'not-applicable'
+          ? await evaluateToolNeedsApproval(tool, args)
+          : decision;
+    } else {
+      const toolLevel = await evaluateToolNeedsApproval(tool, args);
+      effective =
+        toolLevel.type === 'user-approval' ? toolLevel : { type: 'approved' };
+    }
 
     if (onDecision) {
       const event: PolicyDecisionEvent = {
@@ -129,6 +168,7 @@ export function shadow<
 async function evaluateApproval(
   approval: unknown,
   args: GenericApprovalArgs,
+  tool: ApprovalTool | undefined,
 ): Promise<unknown> {
   if (typeof approval === 'function') {
     return await (
@@ -136,17 +176,11 @@ async function evaluateApproval(
     )(args);
   }
 
-  const map = approval as Record<string, unknown>;
   // Own-property check so a tool name that matches an inherited object
   // property (e.g. `constructor`, `toString`, `valueOf`) is treated as
   // unconfigured instead of resolving to a prototype value and being invoked
   // as if it were a per-tool approval callback.
-  const perTool = Object.prototype.hasOwnProperty.call(
-    map,
-    args.toolCall.toolName,
-  )
-    ? map[args.toolCall.toolName]
-    : undefined;
+  const perTool = getOwn(approval, args.toolCall.toolName);
   if (perTool == null) return undefined;
   if (typeof perTool === 'function') {
     return await (
@@ -162,11 +196,56 @@ async function evaluateApproval(
     )(args.toolCall.input, {
       toolCallId: args.toolCall.toolCallId,
       messages: args.messages,
-      toolContext: undefined,
+      toolContext: await validateToolContext(tool, args),
       runtimeContext: args.runtimeContext,
     });
   }
   return perTool;
+}
+
+/**
+ * The tool's own `needsApproval` requirement, resolved the same way the SDK
+ * resolves it when `toolApproval` has no opinion on the call.
+ */
+async function evaluateToolNeedsApproval(
+  tool: ApprovalTool | undefined,
+  args: GenericApprovalArgs,
+): Promise<PolicyDecision> {
+  if (tool?.needsApproval == null) return { type: 'not-applicable' };
+
+  const needsApproval =
+    typeof tool.needsApproval === 'function'
+      ? await tool.needsApproval(args.toolCall.input, {
+          toolCallId: args.toolCall.toolCallId,
+          messages: args.messages,
+          context: await validateToolContext(tool, args),
+        })
+      : tool.needsApproval;
+
+  return needsApproval ? { type: 'user-approval' } : { type: 'not-applicable' };
+}
+
+async function validateToolContext(
+  tool: ApprovalTool | undefined,
+  args: GenericApprovalArgs,
+): Promise<unknown> {
+  const toolName = args.toolCall.toolName;
+  const context = getOwn(args.toolsContext, toolName);
+  if (tool?.contextSchema == null) return context;
+
+  return await validateTypes({
+    value: context,
+    schema: tool.contextSchema,
+    context: { field: 'tool context', entityName: toolName },
+  });
+}
+
+function getOwn(obj: unknown, key: string): unknown {
+  return obj != null &&
+    typeof obj === 'object' &&
+    Object.prototype.hasOwnProperty.call(obj, key)
+    ? (obj as Record<string, unknown>)[key]
+    : undefined;
 }
 
 function normalizePolicyDecision(status: unknown): PolicyDecision {
