@@ -19,6 +19,7 @@ import {
 import { z } from 'zod/v4';
 import type { FalConfig } from './fal-config';
 import { falErrorDataSchema, falFailedResponseHandler } from './fal-error';
+import { falModelIdToPath } from './fal-model-id';
 import { falTranscriptionModelOptionsSchema } from './fal-transcription-model-options';
 import type { FalTranscriptionModelId } from './fal-transcription-options';
 import type { FalTranscriptionAPITypes } from './fal-api-types';
@@ -100,6 +101,7 @@ export class FalTranscriptionModel implements TranscriptionModelV4 {
     options: Parameters<TranscriptionModelV4['doGenerate']>[0],
   ): Promise<Awaited<ReturnType<TranscriptionModelV4['doGenerate']>>> {
     const currentDate = this.config._internal?.currentDate?.() ?? new Date();
+    const modelPath = falModelIdToPath(this.modelId);
     const { body, warnings } = await this.getArgs(options);
 
     const base64Audio =
@@ -111,7 +113,7 @@ export class FalTranscriptionModel implements TranscriptionModelV4 {
 
     const { value: queueResponse } = await postJsonToApi({
       url: this.config.url({
-        path: `https://queue.fal.run/fal-ai/${this.modelId}`,
+        path: `https://queue.fal.run/fal-ai/${modelPath}`,
         modelId: this.modelId,
       }),
       headers: combineHeaders(this.config.headers?.(), options.headers),
@@ -143,7 +145,7 @@ export class FalTranscriptionModel implements TranscriptionModelV4 {
           rawValue: statusRawResponse,
         } = await getFromApi({
           url: this.config.url({
-            path: `https://queue.fal.run/fal-ai/${this.modelId}/requests/${queueResponse.request_id}`,
+            path: `https://queue.fal.run/fal-ai/${modelPath}/requests/${queueResponse.request_id}`,
             modelId: this.modelId,
           }),
           validateUrl: false,

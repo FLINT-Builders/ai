@@ -19,6 +19,7 @@ import {
 import { z } from 'zod/v4';
 import type { FalImageModelId, FalImageSize } from './fal-image-settings';
 import { falImageModelOptionsSchema } from './fal-image-model-options';
+import { falModelIdToPath } from './fal-model-id';
 
 interface FalImageModelConfig {
   provider: string;
@@ -168,11 +169,12 @@ export class FalImageModel implements ImageModelV4 {
   async doGenerate(
     options: Parameters<ImageModelV4['doGenerate']>[0],
   ): Promise<Awaited<ReturnType<ImageModelV4['doGenerate']>>> {
+    const modelPath = falModelIdToPath(this.modelId);
     const { requestBody, warnings } = await this.getArgs(options);
 
     const currentDate = this.config._internal?.currentDate?.() ?? new Date();
     const { value, responseHeaders } = await postJsonToApi({
-      url: `${this.config.baseURL}/${this.modelId}`,
+      url: `${this.config.baseURL}/${modelPath}`,
       headers: combineHeaders(
         this.config.headers ? await resolve(this.config.headers) : undefined,
         options.headers,
