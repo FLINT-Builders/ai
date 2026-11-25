@@ -3,6 +3,7 @@ import type { ThreadOptions } from '@openai/codex-sdk';
 
 type CodexOptions = {
   config?: Record<string, unknown>;
+  env?: Record<string, string>;
 };
 type TurnOptions = { outputSchema?: Record<string, unknown> };
 const CODEX_ENV_KEYS = [
@@ -354,5 +355,59 @@ describe('Codex bridge config', () => {
     expect(state.turnOptions[0]?.outputSchema).toEqual(
       state.startResponseFormat.schema,
     );
+  });
+
+  test('does not give the Codex process the bridge token or port', async () => {
+    const placeholderToken = 'placeholder-bridge-token';
+    const placeholderPort = 'placeholder-bridge-port';
+    const previousToken = process.env.BRIDGE_CHANNEL_TOKEN;
+    const previousPort = process.env.BRIDGE_WS_PORT;
+    process.env.BRIDGE_CHANNEL_TOKEN = placeholderToken;
+    process.env.BRIDGE_WS_PORT = placeholderPort;
+
+    try {
+      await import('./index');
+
+      const env = state.codexOptions[0]?.env;
+      expect(env).toBeDefined();
+      const leakedKeys = Object.keys(env ?? {}).filter(
+        key => key === 'BRIDGE_CHANNEL_TOKEN' || key === 'BRIDGE_WS_PORT',
+      );
+      expect(leakedKeys).toEqual([]);
+      expect(
+        Object.values(env ?? {}).some(
+          value => value === placeholderToken || value === placeholderPort,
+        ),
+      ).toBe(false);
+      expect(state.threadOptions[0]?.sandboxMode).toBe('danger-full-access');
+      expect(state.threadOptions[0]?.approvalPolicy).toBe('never');
+
+      const { spawn } = await import('node:child_process');
+      const { stdout } = await new Promise<{ stdout: string }>(
+        (resolve, reject) => {
+          const child = spawn(
+            'bash',
+            ['-lc', 'printf %s "$BRIDGE_CHANNEL_TOKEN"'],
+            { env },
+          );
+          let out = '';
+          child.stdout.setEncoding('utf8');
+          child.stdout.on('data', chunk => {
+            out += chunk;
+          });
+          child.on('error', reject);
+          child.on('close', code => {
+            if (code === 0) resolve({ stdout: out });
+            else reject(new Error(`bash exited ${code}`));
+          });
+        },
+      );
+      expect(stdout).toBe('');
+    } finally {
+      if (previousToken === undefined) delete process.env.BRIDGE_CHANNEL_TOKEN;
+      else process.env.BRIDGE_CHANNEL_TOKEN = previousToken;
+      if (previousPort === undefined) delete process.env.BRIDGE_WS_PORT;
+      else process.env.BRIDGE_WS_PORT = previousPort;
+    }
   });
 });
