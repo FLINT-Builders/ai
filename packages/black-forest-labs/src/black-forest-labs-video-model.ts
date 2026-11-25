@@ -25,10 +25,7 @@ import {
   type Resolvable,
 } from '@ai-sdk/provider-utils';
 import { z } from 'zod/v4';
-import {
-  bflFailedResponseHandler,
-  isTrustedUrl,
-} from './black-forest-labs-api';
+import { bflFailedResponseHandler } from './black-forest-labs-api';
 import {
   blackForestLabsVideoModelOptionsSchema,
   type BlackForestLabsVideoModelOptions,
@@ -76,7 +73,7 @@ interface BlackForestLabsVideoModelConfig {
 
 type BlackForestLabsVideoOperation = {
   requestId: string;
-  pollingUrl: string;
+  pollingUrl?: string;
   cost?: number;
   inputMegapixels?: number;
   outputMegapixels?: number;
@@ -206,6 +203,45 @@ function describePollDetails(details: unknown): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * The request id is the operation's identity. The `pollingUrl` recorded at
+ * start names the same request, so an operation whose `pollingUrl` names a
+ * different one has been altered and is refused.
+ */
+function getOperationRequestId(
+  operation: BlackForestLabsVideoOperation | undefined,
+): string {
+  const requestId = operation?.requestId;
+  if (typeof requestId !== 'string' || requestId === '') {
+    throw new InvalidArgumentError({
+      argument: 'operation',
+      message: 'Black Forest Labs video operation is missing a requestId.',
+    });
+  }
+
+  const pollingUrl = operation?.pollingUrl;
+  if (pollingUrl != null) {
+    let pollingIds: string[] | undefined;
+    try {
+      pollingIds =
+        typeof pollingUrl === 'string'
+          ? new URL(pollingUrl).searchParams.getAll('id')
+          : undefined;
+    } catch {
+      pollingIds = undefined;
+    }
+
+    if (pollingIds == null || pollingIds.some(id => id !== requestId)) {
+      throw new InvalidArgumentError({
+        argument: 'operation',
+        message: `Black Forest Labs video operation for request id ${requestId} has a pollingUrl for a different request.`,
+      });
+    }
+  }
+
+  return requestId;
 }
 
 /**
@@ -593,25 +629,22 @@ export class BlackForestLabsVideoModel implements VideoModelV4 {
   ): Promise<VideoModelV4OperationStatusResult> {
     const currentDate = this.config._internal?.currentDate?.() ?? new Date();
     const operation = options.operation as BlackForestLabsVideoOperation;
-    const url = new URL(operation.pollingUrl);
-    if (!url.searchParams.has('id')) {
-      url.searchParams.set('id', operation.requestId);
-    }
+    const requestId = getOperationRequestId(operation);
 
-    const combinedHeaders = combineHeaders(
-      await resolve(this.config.headers),
-      options.headers,
-    );
+    // The operation may come back from the caller, so the poll URL is rebuilt
+    // from the configured base URL instead of using `operation.pollingUrl`.
+    const url = new URL(`${this.config.baseURL}/get_result`);
+    url.searchParams.set('id', requestId);
 
     const { value, responseHeaders } = await getFromApi({
       url: url.toString(),
-      // The polling URL comes from the provider response; validate it.
       validateUrl: true,
       trustedOrigin: this.config.baseURL,
-      // Only send credentials when it stays on a trusted provider host.
-      headers: isTrustedUrl(url.toString(), this.config.baseURL)
-        ? combinedHeaders
-        : undefined,
+      credentialedOrigin: this.config.baseURL,
+      headers: combineHeaders(
+        await resolve(this.config.headers),
+        options.headers,
+      ),
       failedResponseHandler: bflFailedResponseHandler,
       successfulResponseHandler: createJsonResponseHandler(bflVideoPollSchema),
       abortSignal: options.abortSignal,
@@ -634,7 +667,7 @@ export class BlackForestLabsVideoModel implements VideoModelV4 {
           name: 'BLACK_FOREST_LABS_VIDEO_GENERATION_ERROR',
           message:
             'Black Forest Labs reported the video as Ready but returned no result.sample URL. ' +
-            `Request id: ${operation.requestId}`,
+            `Request id: ${requestId}`,
         });
       }
 
@@ -652,7 +685,7 @@ export class BlackForestLabsVideoModel implements VideoModelV4 {
           blackForestLabs: {
             videos: [
               {
-                id: operation.requestId,
+                id: requestId,
                 videoUrl: parsed.data.sample,
                 ...(parsed.data.seed != null && { seed: parsed.data.seed }),
                 ...(parsed.data.start_time != null && {
@@ -688,7 +721,7 @@ export class BlackForestLabsVideoModel implements VideoModelV4 {
         status: 'error',
         error:
           `Black Forest Labs video generation failed with status "${status}"` +
-          `${detail != null ? `: ${detail}` : ''}. Request id: ${operation.requestId}`,
+          `${detail != null ? `: ${detail}` : ''}. Request id: ${requestId}`,
         response,
       };
     }
