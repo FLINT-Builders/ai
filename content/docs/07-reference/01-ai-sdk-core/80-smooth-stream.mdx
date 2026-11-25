@@ -114,9 +114,17 @@ smoothStream({
 
 // Also can do it like this, same behavior
 smoothStream({
-  chunking: /[^_]*_/,
+  chunking: /^[^_]*_/,
 });
 ```
+
+<Note>
+  Custom `RegExp` patterns and callbacks are applied to the entire buffered text
+  each time a new delta arrives, and the buffer keeps growing until a chunk is
+  found. Use patterns that run in linear time on text that does not match (for
+  example, anchor them with `^` and avoid nested or overlapping quantifiers),
+  since model output can contain long runs without a chunk boundary.
+</Note>
 
 #### Custom callback chunking
 
