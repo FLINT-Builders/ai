@@ -461,25 +461,6 @@ export class XaiVideoModel implements VideoModelV4 {
       body.user = xaiOptions.user;
     }
 
-    if (xaiOptions != null) {
-      for (const [key, value] of Object.entries(xaiOptions)) {
-        if (
-          ![
-            'mode',
-            'pollIntervalMs',
-            'pollTimeoutMs',
-            'resolution',
-            'videoUrl',
-            'referenceImageUrls',
-            'referenceVoiceIds',
-            'user',
-          ].includes(key)
-        ) {
-          body[key] = value;
-        }
-      }
-    }
-
     return {
       body,
       warnings,
