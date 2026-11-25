@@ -146,6 +146,24 @@ const modeEndpointMap: Record<KlingAIVideoMode, string> = {
   'motion-control': '/v1/videos/motion-control',
 };
 
+const knownEndpointPaths = new Set<unknown>(Object.values(modeEndpointMap));
+
+function encodeTaskIdPathSegment(taskId: unknown): string {
+  const encodedTaskId =
+    typeof taskId === 'string' ? encodeURIComponent(taskId) : '';
+
+  // URL parsing removes empty, `.` and `..` segments (literal or
+  // percent-encoded), which would move the status request off the task path.
+  if (encodedTaskId === '' || encodedTaskId === '.' || encodedTaskId === '..') {
+    throw new AISDKError({
+      name: 'KLINGAI_VIDEO_GENERATION_ERROR',
+      message: 'Invalid KlingAI video task ID.',
+    });
+  }
+
+  return encodedTaskId;
+}
+
 /**
  * Derives the KlingAI API `model_name` from the SDK model ID.
  * Strips the mode suffix and converts dots to hyphens.
@@ -312,9 +330,16 @@ export class KlingAIVideoModel implements VideoModelV4 {
       taskId: string;
       endpointPath: string;
     };
+    if (!knownEndpointPaths.has(endpointPath)) {
+      throw new AISDKError({
+        name: 'KLINGAI_VIDEO_GENERATION_ERROR',
+        message: 'Invalid KlingAI video endpoint path.',
+      });
+    }
+    const encodedTaskId = encodeTaskIdPathSegment(taskId);
 
     const { value: statusResponse, responseHeaders } = await getFromApi({
-      url: `${this.config.baseURL}${endpointPath}/${taskId}`,
+      url: `${this.config.baseURL}${endpointPath}/${encodedTaskId}`,
       validateUrl: true,
       trustedOrigin: this.config.baseURL,
       headers: combineHeaders(

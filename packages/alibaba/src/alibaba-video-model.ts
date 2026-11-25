@@ -50,6 +50,22 @@ const alibabaVideoFailedResponseHandler = createJsonErrorResponseHandler({
   errorToMessage: data => data.message,
 });
 
+function encodeTaskIdPathSegment(taskId: unknown): string {
+  const encodedTaskId =
+    typeof taskId === 'string' ? encodeURIComponent(taskId) : '';
+
+  // URL parsing removes empty, `.` and `..` segments (literal or
+  // percent-encoded), which would move the status request off the task path.
+  if (encodedTaskId === '' || encodedTaskId === '.' || encodedTaskId === '..') {
+    throw new AISDKError({
+      name: 'ALIBABA_VIDEO_GENERATION_ERROR',
+      message: 'Invalid Alibaba video task ID.',
+    });
+  }
+
+  return encodedTaskId;
+}
+
 const alibabaVideoCreateTaskSchema = z.object({
   output: z
     .object({
@@ -652,9 +668,10 @@ export class AlibabaVideoModel implements VideoModelV4 {
   ): Promise<VideoModelV4OperationStatusResult> {
     const currentDate = this.config._internal?.currentDate?.() ?? new Date();
     const { taskId } = options.operation as { taskId: string };
+    const encodedTaskId = encodeTaskIdPathSegment(taskId);
 
     const { value: statusResponse, responseHeaders } = await getFromApi({
-      url: `${this.config.baseURL}/api/v1/tasks/${taskId}`,
+      url: `${this.config.baseURL}/api/v1/tasks/${encodedTaskId}`,
       validateUrl: false,
       headers: combineHeaders(
         await resolve(this.config.headers),

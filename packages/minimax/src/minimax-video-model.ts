@@ -71,6 +71,22 @@ const MAX_REFERENCE_IMAGES = 9;
 const MAX_REFERENCE_VIDEOS = 3;
 const MAX_REFERENCE_AUDIOS = 3;
 
+function encodeTaskIdPathSegment(taskId: unknown): string {
+  const encodedTaskId =
+    typeof taskId === 'string' ? encodeURIComponent(taskId) : '';
+
+  // URL parsing removes empty, `.` and `..` segments (literal or
+  // percent-encoded), which would move the status request off the task path.
+  if (encodedTaskId === '' || encodedTaskId === '.' || encodedTaskId === '..') {
+    throw new AISDKError({
+      name: 'MINIMAX_VIDEO_GENERATION_ERROR',
+      message: 'Invalid MiniMax video task ID.',
+    });
+  }
+
+  return encodedTaskId;
+}
+
 const allowedRatios = new Set<string>(minimaxVideoRatios);
 const allowedResolutions = new Set<string>(minimaxVideoResolutions);
 const modelResolutionSettings: Record<
@@ -636,9 +652,10 @@ export class MiniMaxVideoModel implements VideoModelV4 {
     const currentDate = this.config._internal?.currentDate?.() ?? new Date();
     const { taskId, resolvedInputs } =
       options.operation as MiniMaxVideoOperation;
+    const encodedTaskId = encodeTaskIdPathSegment(taskId);
     const baseURL = this.config.baseURL;
     const { value: statusResponse, responseHeaders } = await getFromApi({
-      url: `${baseURL}/v2/query/video_generation/${encodeURIComponent(taskId)}`,
+      url: `${baseURL}/v2/query/video_generation/${encodedTaskId}`,
       validateUrl: true,
       trustedOrigin: baseURL,
       headers: combineHeaders(

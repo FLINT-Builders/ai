@@ -41,6 +41,22 @@ const HANDLED_PROVIDER_OPTIONS = new Set([
   'pollTimeoutMs',
 ]);
 
+function encodeTaskIdPathSegment(taskId: unknown): string {
+  const encodedTaskId =
+    typeof taskId === 'string' ? encodeURIComponent(taskId) : '';
+
+  // URL parsing removes empty, `.` and `..` segments (literal or
+  // percent-encoded), which would move the status request off the task path.
+  if (encodedTaskId === '' || encodedTaskId === '.' || encodedTaskId === '..') {
+    throw new AISDKError({
+      name: 'BYTEDANCE_VIDEO_GENERATION_ERROR',
+      message: 'Invalid ByteDance video task ID.',
+    });
+  }
+
+  return encodedTaskId;
+}
+
 const RESOLUTION_MAP: Record<string, string> = {
   '864x496': '480p',
   '496x864': '480p',
@@ -399,9 +415,10 @@ export class ByteDanceVideoModel implements VideoModelV4 {
   ): Promise<VideoModelV4OperationStatusResult> {
     const currentDate = this.config._internal?.currentDate?.() ?? new Date();
     const { taskId } = options.operation as { taskId: string };
+    const encodedTaskId = encodeTaskIdPathSegment(taskId);
 
     const { value: statusResponse, responseHeaders } = await getFromApi({
-      url: `${this.config.baseURL}/contents/generations/tasks/${taskId}`,
+      url: `${this.config.baseURL}/contents/generations/tasks/${encodedTaskId}`,
       validateUrl: true,
       trustedOrigin: this.config.baseURL,
       headers: combineHeaders(
