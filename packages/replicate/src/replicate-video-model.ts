@@ -17,6 +17,7 @@ import {
   resolve,
 } from '@ai-sdk/provider-utils';
 import { z } from 'zod/v4';
+import { getReplicatePredictionUrl } from './get-replicate-prediction-url';
 import { replicateFailedResponseHandler } from './replicate-error';
 import {
   replicateVideoModelOptionsSchema,
@@ -183,14 +184,11 @@ export class ReplicateVideoModel implements VideoModelV4 {
     options: Parameters<NonNullable<VideoModelV4['doStart']>>[0],
   ): Promise<VideoModelV4OperationStartResult> {
     const currentDate = this.config._internal?.currentDate?.() ?? new Date();
+    const { url: predictionUrl, version } = getReplicatePredictionUrl({
+      baseURL: this.config.baseURL,
+      modelId: this.modelId,
+    });
     const { input, warnings } = await this.buildInput(options);
-
-    const [modelId, version] = this.modelId.split(':');
-
-    const predictionUrl =
-      version != null
-        ? `${this.config.baseURL}/predictions`
-        : `${this.config.baseURL}/models/${modelId}/predictions`;
 
     const { value: prediction, responseHeaders } = await postJsonToApi({
       url: predictionUrl,

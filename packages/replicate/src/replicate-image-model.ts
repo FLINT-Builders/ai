@@ -20,6 +20,7 @@ import {
   type FetchFunction,
 } from '@ai-sdk/provider-utils';
 import { z } from 'zod/v4';
+import { getReplicatePredictionUrl } from './get-replicate-prediction-url';
 import { replicateFailedResponseHandler } from './replicate-error';
 import { replicateImageModelOptionsSchema } from './replicate-image-model-options';
 import type { ReplicateImageModelId } from './replicate-image-settings';
@@ -92,7 +93,10 @@ export class ReplicateImageModel implements ImageModelV4 {
   > {
     const warnings: Array<SharedV4Warning> = [];
 
-    const [modelId, version] = this.modelId.split(':');
+    const { url: predictionUrl, version } = getReplicatePredictionUrl({
+      baseURL: this.config.baseURL,
+      modelId: this.modelId,
+    });
 
     const currentDate = this.config._internal?.currentDate?.() ?? new Date();
 
@@ -170,11 +174,7 @@ export class ReplicateImageModel implements ImageModelV4 {
       : undefined;
 
     const { value: initialPrediction, responseHeaders } = await postJsonToApi({
-      url:
-        // different endpoints for versioned vs unversioned models:
-        version != null
-          ? `${this.config.baseURL}/predictions`
-          : `${this.config.baseURL}/models/${modelId}/predictions`,
+      url: predictionUrl,
 
       headers: combineHeaders(resolvedHeaders, headers, preferHeader),
 
