@@ -87,7 +87,8 @@ Settings:
 
 - `auth`: authentication mode (`auto`, `direct`, or `ai-gateway`) or an
   isolated authentication environment.
-- `mcpServers`: MCP server definitions keyed by server name.
+- `mcpServers`: MCP server definitions keyed by server name. MCP servers run
+  in the host Node.js process, outside the sandbox.
 - `providerId`: Cline LLM provider id (e.g. `anthropic`, `openai`, `gemini`).
   When omitted, direct authentication uses the Cline backend. Explicit custom
   providers apply only to direct authentication.
@@ -183,6 +184,10 @@ directory, and relative file paths resolve against it.
 Cline supports built-in tool approval requests when `permissionMode` is
 `allow-reads` or `allow-edits`, native built-in tool filtering via
 `activeTools`/`inactiveTools`, and host-executed AI SDK tool approvals.
+
+Tools from `mcpServers` run in the host Node.js process, outside the sandbox.
+Every call to one of them requires approval unless `permissionMode` is
+`allow-all`.
 
 ## Skills
 

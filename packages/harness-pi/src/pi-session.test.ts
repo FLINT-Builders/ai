@@ -314,7 +314,10 @@ describe('createPiSession', () => {
     try {
       const extensionFactoryInput = piMock.extensionFactoryInputs.at(-1);
       expect(callOrder).toEqual(['first', 'second']);
-      expect(extensionFactoryInput?.snapshot).toEqual(extensionFactories);
+      expect(extensionFactoryInput?.snapshot).toEqual([
+        ...extensionFactories,
+        expect.any(Function),
+      ]);
       expect(extensionFactoryInput?.reference).not.toBe(extensionFactories);
     } finally {
       await session.doDestroy();
@@ -592,6 +595,7 @@ describe('createPiSession', () => {
     });
     expect(piMock.resourceLoaderOptions.at(-1)?.extensionFactories).toEqual([
       mcpAdapterMock.mcpExtensionFactory,
+      expect.any(Function),
     ]);
     expect(piMock.createAgentSession).toHaveBeenCalledWith(
       expect.objectContaining({ noTools: 'builtin' }),
@@ -617,6 +621,7 @@ describe('createPiSession', () => {
       expect(piMock.extensionFactoryInputs.at(-1)?.snapshot).toEqual([
         factory,
         mcpAdapterMock.mcpExtensionFactory,
+        expect.any(Function),
       ]);
       expect(factory).toHaveBeenCalledOnce();
       expect(mcpAdapterMock.mcpExtensionFactory).toHaveBeenCalledOnce();

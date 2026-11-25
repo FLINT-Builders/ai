@@ -508,6 +508,19 @@ export async function createPiSession(
       }),
     );
   }
+  /*
+   * Names of the tools the harness itself defines for the current Pi session.
+   * Pi resolves a name to the harness definition over any extension tool of
+   * the same name, so every other name belongs to an extension (configured
+   * MCP servers included), runs in this host process outside the sandbox, and
+   * is gated by `createExtensionToolApprovalGate`.
+   */
+  let harnessToolNames: ReadonlySet<string> = new Set();
+  if (extensionFactories.length > 0) {
+    // Registered last so its `tool_call` handler sees the final input that
+    // earlier extension handlers may have patched.
+    extensionFactories.push(createExtensionToolApprovalGate());
+  }
   const hasExtensionFactories = extensionFactories.length > 0;
   let preserveExtensionsResult = false;
   let currentExtensionsResult:
@@ -972,22 +985,58 @@ export async function createPiSession(
     ) {
       return { approved: true };
     }
+    return requestToolApproval(args.toolCallId);
+  }
+
+  function requestToolApproval(
+    toolCallId: string,
+  ): Promise<{ approved: boolean; reason?: string }> {
     currentEmit?.({
       type: 'tool-approval-request',
-      approvalId: args.toolCallId,
-      toolCallId: args.toolCallId,
+      approvalId: toolCallId,
+      toolCallId,
     });
     if (translatorState) {
-      for (const part of finishPiApprovalStep(
-        translatorState,
-        args.toolCallId,
-      )) {
+      for (const part of finishPiApprovalStep(translatorState, toolCallId)) {
         currentEmit?.(part);
       }
     }
     return new Promise(resolve => {
-      pendingToolApprovals.set(args.toolCallId, { resolve });
+      pendingToolApprovals.set(toolCallId, { resolve });
     });
+  }
+
+  /*
+   * Extension tools (including configured MCP tools) execute in this host
+   * process with its network and credentials, so unlike the sandbox-backed
+   * built-ins they need approval in every mode except `allow-all`.
+   */
+  function createExtensionToolApprovalGate(): ExtensionFactory {
+    return pi => {
+      pi.on('tool_call', async event => {
+        if (
+          permissionMode === 'allow-all' ||
+          harnessToolNames.has(event.toolName)
+        ) {
+          return undefined;
+        }
+        const approvedInput = JSON.stringify(event.input);
+        const decision = await requestToolApproval(event.toolCallId);
+        if (!decision.approved) {
+          return {
+            block: true,
+            reason: decision.reason ?? 'Tool execution was denied.',
+          };
+        }
+        if (JSON.stringify(event.input) !== approvedInput) {
+          return {
+            block: true,
+            reason: 'Tool input changed after it was approved.',
+          };
+        }
+        return undefined;
+      });
+    };
   }
 
   function buildToolDefinitions(userTools: ReadonlyArray<HarnessV1ToolSpec>): {
@@ -1051,6 +1100,7 @@ export async function createPiSession(
 
     const { customTools, builtinNames } = buildToolDefinitions(userTools);
     const toolNames = customTools.map(t => t.name);
+    harnessToolNames = new Set(toolNames);
 
     // SessionManager: open the resumed file on the first build of a resumed
     // session; create fresh otherwise.
