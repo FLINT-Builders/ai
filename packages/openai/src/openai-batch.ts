@@ -90,6 +90,25 @@ type OpenAIBatchResultConversion =
   | { success: true; result: LanguageModelV4GenerateResult }
   | { success: false; error: BatchV4Error };
 
+function encodeBatchIdPathSegment(batchId: string): string {
+  const encodedBatchId = encodeURIComponent(batchId);
+
+  // URL parsing removes dot segments, so these would resolve to the batch
+  // collection or a parent path instead of a single batch.
+  if (
+    encodedBatchId === '' ||
+    encodedBatchId === '.' ||
+    encodedBatchId === '..'
+  ) {
+    throw new InvalidArgumentError({
+      argument: 'batchId',
+      message: `Invalid OpenAI batch id "${batchId}".`,
+    });
+  }
+
+  return encodedBatchId;
+}
+
 function assertTextBatchRequests(
   requests: BatchV4StartOptions['requests'],
 ): asserts requests is ReadonlyArray<OpenAIBatchRequest> {
@@ -354,7 +373,7 @@ export class OpenAIBatch implements BatchV4<OpenAIBatchModelIds> {
   ): Promise<BatchV4CancelResult> {
     await postJsonToApi({
       url: this.getUrl(
-        `/batches/${encodeURIComponent(options.batchId)}/cancel`,
+        `/batches/${encodeBatchIdPathSegment(options.batchId)}/cancel`,
       ),
       headers: combineHeaders(this.options.config.headers?.(), options.headers),
       body: {},
@@ -435,7 +454,7 @@ export class OpenAIBatch implements BatchV4<OpenAIBatchModelIds> {
     options: BatchV4OperationOptions,
   ): Promise<OpenAIBatchResponse> {
     const { value: batch } = await getFromApi({
-      url: this.getUrl(`/batches/${encodeURIComponent(options.batchId)}`),
+      url: this.getUrl(`/batches/${encodeBatchIdPathSegment(options.batchId)}`),
       headers: combineHeaders(this.options.config.headers?.(), options.headers),
       failedResponseHandler: openaiFailedResponseHandler,
       successfulResponseHandler: createJsonResponseHandler(
