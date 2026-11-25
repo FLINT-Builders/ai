@@ -8,3 +8,4 @@ export {
 } from '../interactions/google-interactions-language-model';
 export type { GoogleInteractionsModelId } from '../interactions/google-interactions-language-model-options';
 export type { GoogleInteractionsAgentName } from '../interactions/google-interactions-agent';
+export { getModelIdPathSegment, getModelPath } from '../get-model-path';
