@@ -10,7 +10,9 @@ import {
 import { InvalidToolApprovalSignatureError } from '../error/invalid-tool-approval-signature-error';
 import { InvalidToolInputError } from '../error/invalid-tool-input-error';
 import { getOwn } from '../util/get-own';
+import type { ActiveTools } from './active-tools';
 import type { CollectedToolApprovals } from './collect-tool-approvals';
+import { filterActiveTools } from './filter-active-tools';
 import { resolveToolApproval } from './resolve-tool-approval';
 import { verifyToolApprovalSignature } from './tool-approval-signature';
 import type { ToolApprovalConfiguration } from './tool-approval-configuration';
@@ -18,7 +20,10 @@ import type { ToolApprovalConfiguration } from './tool-approval-configuration';
 /**
  * Re-validates approved tool approvals reconstructed from client-supplied
  * message history before they are executed. Checks HMAC signature (when
- * configured), input schema, and approval policy.
+ * configured), the active tool allowlist, input schema, and approval policy.
+ *
+ * Callers must execute the returned approvals against the same active tool
+ * subset (`filterActiveTools({ tools, activeTools })`), never the full tool set.
  */
 export async function validateApprovedToolApprovals<
   TOOLS extends ToolSet,
@@ -26,6 +31,7 @@ export async function validateApprovedToolApprovals<
 >({
   approvedToolApprovals,
   tools,
+  activeTools,
   toolApproval,
   messages,
   toolsContext,
@@ -34,6 +40,12 @@ export async function validateApprovedToolApprovals<
 }: {
   approvedToolApprovals: Array<CollectedToolApprovals<TOOLS>>;
   tools: TOOLS | undefined;
+  /**
+   * Tool names the caller allows for this call. Approvals that name a tool
+   * outside this list are reported as invalid and must not be executed.
+   * `undefined` means no restriction.
+   */
+  activeTools?: ActiveTools<TOOLS>;
   toolApproval: ToolApprovalConfiguration<TOOLS, RUNTIME_CONTEXT> | undefined;
   messages: ModelMessage[];
   toolsContext: InferToolSetContext<TOOLS>;
@@ -43,14 +55,25 @@ export async function validateApprovedToolApprovals<
   approvedToolApprovals: Array<CollectedToolApprovals<TOOLS>>;
   deniedToolApprovals: Array<CollectedToolApprovals<TOOLS>>;
   invalidToolApprovals: Array<
-    CollectedToolApprovals<TOOLS> & { error: InvalidToolInputError }
+    CollectedToolApprovals<TOOLS> & {
+      /**
+       * Invalid input, or a message when the tool is not in `activeTools`.
+       */
+      error: InvalidToolInputError | string;
+    }
   >;
 }> {
   const approved: Array<CollectedToolApprovals<TOOLS>> = [];
   const denied: Array<CollectedToolApprovals<TOOLS>> = [];
   const invalid: Array<
-    CollectedToolApprovals<TOOLS> & { error: InvalidToolInputError }
+    CollectedToolApprovals<TOOLS> & {
+      error: InvalidToolInputError | string;
+    }
   > = [];
+
+  const activeToolSet = filterActiveTools({ tools, activeTools }) as
+    | TOOLS
+    | undefined;
 
   for (const approval of approvedToolApprovals) {
     const { toolCall, approvalRequest } = approval;
@@ -58,7 +81,7 @@ export async function validateApprovedToolApprovals<
     // client-supplied history, so a name matching an inherited object property
     // (e.g. `constructor`, `toString`) must resolve to "no such tool" rather
     // than a prototype value that would silently skip input validation below.
-    const tool = getOwn(tools, toolCall.toolName);
+    const tool = getOwn(activeToolSet, toolCall.toolName);
 
     if (toolApprovalSecret != null) {
       if (approvalRequest.signature == null) {
@@ -87,6 +110,14 @@ export async function validateApprovedToolApprovals<
       }
     }
 
+    if (activeTools != null && tool == null) {
+      invalid.push({
+        ...approval,
+        error: `Tool "${toolCall.toolName}" is not an active tool`,
+      });
+      continue;
+    }
+
     if (isExecutableTool(tool) && tool.inputSchema != null) {
       const validation = await safeValidateTypes({
         value: toolCall.input,
@@ -107,7 +138,7 @@ export async function validateApprovedToolApprovals<
     }
 
     const approvalStatus = await resolveToolApproval({
-      tools,
+      tools: activeToolSet,
       toolApproval,
       toolCall,
       messages,
