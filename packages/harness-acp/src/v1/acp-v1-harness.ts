@@ -181,12 +181,14 @@ export function createACPV1<TBuiltinTools extends ToolSet = {}>({
   })
     ? settings.permissionModeMapping
     : undefined;
+  const supportsBuiltinToolApprovals =
+    settings.supportsBuiltinToolApprovals !== false;
 
   return {
     specificationVersion: 'harness-v1',
     harnessId: settings.harnessId,
     builtinTools,
-    supportsBuiltinToolApprovals: true,
+    supportsBuiltinToolApprovals,
     supportsBuiltinToolFiltering: false,
     lifecycleStateSchema,
     getBootstrap: bootstrap.getBootstrap,
@@ -199,6 +201,12 @@ export function createACPV1<TBuiltinTools extends ToolSet = {}>({
         });
       }
       const permissionMode = startOptions.permissionMode ?? 'allow-all';
+      if (permissionMode !== 'allow-all' && !supportsBuiltinToolApprovals) {
+        throw unsupported({
+          harnessId: settings.harnessId,
+          message: `The ${settings.harnessId} ACP harness does not support built-in tool approval requests; use permissionMode: 'allow-all'.`,
+        });
+      }
       const env = { ...process.env };
       const authenticationEnvironment =
         settings.resolveAuthenticationEnvironment == null
@@ -650,6 +658,7 @@ export function createACPV1<TBuiltinTools extends ToolSet = {}>({
             askUserQuestionsRequestMethod:
               settings.askUserQuestions?.requestMethod,
             hostToolMcpTransport: settings.hostToolMcpTransport,
+            builtinToolApprovals: supportsBuiltinToolApprovals,
           }),
           ...sandboxProviderAuthenticationEnvironment,
           BRIDGE_CHANNEL_TOKEN: token,

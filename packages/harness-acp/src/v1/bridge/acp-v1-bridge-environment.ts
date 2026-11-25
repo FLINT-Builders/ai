@@ -68,6 +68,12 @@ export type ACPBridgeConfiguration = {
   readonly clientCapabilities?: Readonly<Record<string, ACPSerializableValue>>;
   readonly askUserQuestionsRequestMethod?: string;
   readonly hostToolMcpTransport?: ACPHostToolMCPTransport;
+  /**
+   * Must be `true` for the bridge to accept a permission mode other than
+   * `allow-all`. When absent, restrictive modes are refused because the
+   * implementation may run built-in tools without asking for approval.
+   */
+  readonly builtinToolApprovals?: boolean;
 };
 
 const bridgeConfigurationSchema: z.ZodType<ACPBridgeConfiguration> = z.object({
@@ -78,6 +84,7 @@ const bridgeConfigurationSchema: z.ZodType<ACPBridgeConfiguration> = z.object({
   clientCapabilities: serializableRecordSchema.optional(),
   askUserQuestionsRequestMethod: z.string().optional(),
   hostToolMcpTransport: hostToolMcpTransportSchema.optional(),
+  builtinToolApprovals: z.boolean().optional(),
 });
 
 export function createACPBridgeEnvironment({
@@ -88,6 +95,7 @@ export function createACPBridgeEnvironment({
   clientCapabilities,
   askUserQuestionsRequestMethod,
   hostToolMcpTransport,
+  builtinToolApprovals,
 }: ACPBridgeConfiguration): Record<string, string> {
   return {
     [ACP_BRIDGE_CONFIGURATION_ENV]: JSON.stringify({
@@ -100,6 +108,7 @@ export function createACPBridgeEnvironment({
         ? {}
         : { askUserQuestionsRequestMethod }),
       ...(hostToolMcpTransport == null ? {} : { hostToolMcpTransport }),
+      ...(builtinToolApprovals == null ? {} : { builtinToolApprovals }),
     }),
   };
 }

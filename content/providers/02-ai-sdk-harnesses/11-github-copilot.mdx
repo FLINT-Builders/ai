@@ -214,10 +214,9 @@ Other tools remain available under their native GitHub Copilot names, including
 `skill`, `sql`, agent tools, and `task`. GitHub and user-configured MCP tools
 remain dynamic.
 
-The shared ACP harness applies the configured Harness `permissionMode` when
-GitHub Copilot sends a permission request. `allow-reads` approves read
-operations, `allow-edits` also approves file mutations, and `allow-all` approves
-every request. Shell execution still requires approval under `allow-edits`.
+The adapter only accepts `permissionMode: 'allow-all'`, which approves every
+ACP permission request GitHub Copilot sends. Other permission modes throw
+`HarnessCapabilityUnsupportedError`.
 
 ## Known Limitations
 

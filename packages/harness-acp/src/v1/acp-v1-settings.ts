@@ -246,6 +246,15 @@ export type ACPV1Settings = {
   readonly hostToolMcpTransport?: ACPHostToolMCPTransport;
   readonly askUserQuestions?: ACPAskUserQuestionsSettings;
   readonly permissionModeMapping?: ACPPermissionModeMapping;
+  /**
+   * Whether the ACP implementation sends `session/request_permission` for
+   * built-in tools that the selected permission mode does not allow, or
+   * enforces the mode natively through `permissionModeMapping`. Set this to
+   * `false` for implementations that run built-in tools without asking the
+   * client, so permission modes other than `allow-all` are rejected instead of
+   * being silently unenforced. Defaults to `true`.
+   */
+  readonly supportsBuiltinToolApprovals?: boolean;
   readonly session?: {
     readonly meta?: Readonly<Record<string, ACPSerializableValue>>;
   };

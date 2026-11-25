@@ -202,10 +202,10 @@ Other Grok Build tools remain available under their native names, including
 `read_file`, `list_dir`, `todo_write`, `spawn_subagent`, `monitor`, workflow and
 scheduler tools, and image-generation tools.
 
-Grok Build does not advertise ACP session modes for its permission behavior.
-When Grok sends an ACP permission request, the ACP harness applies the
-configured Harness `permissionMode` based on the tool kind. Grok may handle
-safe built-in operations internally without sending a permission request.
+Grok Build does not advertise ACP session modes for its permission behavior,
+and it may handle built-in operations internally without sending a permission
+request. The adapter therefore only accepts `permissionMode: 'allow-all'`;
+other permission modes throw `HarnessCapabilityUnsupportedError`.
 
 ## Known Limitations
 
