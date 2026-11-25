@@ -131,7 +131,7 @@ describe('ReplicateVideoModel', () => {
   });
 
   describe('doStart', () => {
-    it('should return operation with getUrl', async () => {
+    it('should return operation with predictionId', async () => {
       const model = createMockModel({
         predictionId: 'start-pred-123',
       });
@@ -139,7 +139,7 @@ describe('ReplicateVideoModel', () => {
       const result = await model.doStart({ ...defaultOptions });
 
       expect(result.operation).toStrictEqual({
-        getUrl: 'https://api.replicate.com/v1/predictions/start-pred-123',
+        predictionId: 'start-pred-123',
       });
     });
 
@@ -734,7 +734,7 @@ describe('ReplicateVideoModel', () => {
 
       const result = await model.doStatus({
         operation: {
-          getUrl: 'https://api.replicate.com/v1/predictions/status-pred-123',
+          predictionId: 'status-pred-123',
         },
       });
 
@@ -755,7 +755,7 @@ describe('ReplicateVideoModel', () => {
 
       const result = await model.doStatus({
         operation: {
-          getUrl: 'https://api.replicate.com/v1/predictions/status-pred-123',
+          predictionId: 'status-pred-123',
         },
       });
 
@@ -769,7 +769,7 @@ describe('ReplicateVideoModel', () => {
 
       const result = await model.doStatus({
         operation: {
-          getUrl: 'https://api.replicate.com/v1/predictions/status-pred-123',
+          predictionId: 'status-pred-123',
         },
       });
 
@@ -784,7 +784,7 @@ describe('ReplicateVideoModel', () => {
 
       const result = await model.doStatus({
         operation: {
-          getUrl: 'https://api.replicate.com/v1/predictions/status-pred-123',
+          predictionId: 'status-pred-123',
         },
       });
 
@@ -801,7 +801,7 @@ describe('ReplicateVideoModel', () => {
 
       const result = await model.doStatus({
         operation: {
-          getUrl: 'https://api.replicate.com/v1/predictions/status-pred-123',
+          predictionId: 'status-pred-123',
         },
       });
 
@@ -818,7 +818,7 @@ describe('ReplicateVideoModel', () => {
       await expect(
         model.doStatus({
           operation: {
-            getUrl: 'https://api.replicate.com/v1/predictions/status-pred-123',
+            predictionId: 'status-pred-123',
           },
         }),
       ).rejects.toMatchObject({
@@ -836,7 +836,7 @@ describe('ReplicateVideoModel', () => {
 
       const result = await model.doStatus({
         operation: {
-          getUrl: 'https://api.replicate.com/v1/predictions/meta-pred-456',
+          predictionId: 'meta-pred-456',
         },
       });
 
@@ -861,7 +861,7 @@ describe('ReplicateVideoModel', () => {
 
       const result = await model.doStatus({
         operation: {
-          getUrl: 'https://api.replicate.com/v1/predictions/status-pred-123',
+          predictionId: 'status-pred-123',
         },
       });
 

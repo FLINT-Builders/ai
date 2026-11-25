@@ -15,7 +15,7 @@ const prompt = 'A white kitten chases a butterfly across a sunlit garden.';
 
 const TEST_BASE_URL = 'https://api.example.com/v1';
 const SUBMIT_URL = `${TEST_BASE_URL}/flux-3-video`;
-const POLL_URL = 'https://api.example.com/poll';
+const POLL_URL = `${TEST_BASE_URL}/get_result`;
 const VIDEO_URL = 'https://api.example.com/output/video-001.mp4';
 const REQUEST_ID = 'req-123';
 

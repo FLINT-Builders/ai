@@ -1,5 +1,6 @@
 import {
   AISDKError,
+  InvalidArgumentError,
   NoSuchModelError,
   type Experimental_VideoModelV4 as VideoModelV4,
   type Experimental_VideoModelV4CallOptions as VideoModelV4CallOptions,
@@ -145,6 +146,36 @@ const modeEndpointMap: Record<KlingAIVideoMode, string> = {
   mi2v: '/v1/videos/multi-image2video',
   'motion-control': '/v1/videos/motion-control',
 };
+
+function getStatusEndpointPath(modelId: string, endpointPath: unknown): string {
+  const mode = detectMode(modelId);
+  const allowedModes: KlingAIVideoMode[] =
+    mode === 'i2v' ? ['i2v', 'mi2v'] : [mode];
+
+  return (
+    allowedModes
+      .map(allowedMode => modeEndpointMap[allowedMode])
+      .find(path => path === endpointPath) ?? modeEndpointMap[mode]
+  );
+}
+
+function encodePathSegment(taskId: unknown): string {
+  // URL parsing normalizes dot segments, which would climb out of the path.
+  if (
+    typeof taskId !== 'string' ||
+    taskId === '' ||
+    taskId === '.' ||
+    taskId === '..'
+  ) {
+    throw new InvalidArgumentError({
+      argument: 'operation',
+      message:
+        'KlingAI video operation must contain the taskId returned when the video was started.',
+    });
+  }
+
+  return encodeURIComponent(taskId);
+}
 
 /**
  * Derives the KlingAI API `model_name` from the SDK model ID.
@@ -308,13 +339,20 @@ export class KlingAIVideoModel implements VideoModelV4 {
     options: Parameters<NonNullable<VideoModelV4['doStatus']>>[0],
   ): Promise<VideoModelV4OperationStatusResult> {
     const currentDate = this.config._internal?.currentDate?.() ?? new Date();
-    const { taskId, endpointPath } = options.operation as {
+    // The operation is caller-supplied: read each field once, keep the endpoint
+    // only when this model can start tasks there, and encode the task id.
+    const { taskId, endpointPath } = (options.operation ?? {}) as {
       taskId: string;
       endpointPath: string;
     };
+    const encodedTaskId = encodePathSegment(taskId);
+    const statusEndpointPath = getStatusEndpointPath(
+      this.modelId,
+      endpointPath,
+    );
 
     const { value: statusResponse, responseHeaders } = await getFromApi({
-      url: `${this.config.baseURL}${endpointPath}/${taskId}`,
+      url: `${this.config.baseURL}${statusEndpointPath}/${encodedTaskId}`,
       validateUrl: true,
       trustedOrigin: this.config.baseURL,
       headers: combineHeaders(

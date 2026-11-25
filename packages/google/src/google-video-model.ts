@@ -1,5 +1,6 @@
 import {
   AISDKError,
+  InvalidArgumentError,
   type Experimental_VideoModelV4 as VideoModelV4,
   type Experimental_VideoModelV4CallOptions as VideoModelV4CallOptions,
   type Experimental_VideoModelV4File as VideoModelV4File,
@@ -137,6 +138,36 @@ function convertInputReferenceImage(
 ): Record<string, unknown> | undefined {
   const image = convertFileToGoogleImage(file, warnings);
   return image != null ? { image, referenceType: 'asset' } : undefined;
+}
+
+/**
+ * Encodes an operation name of the form `operations/{id}` or
+ * `models/{model}/operations/{id}` so it can only address an operation.
+ */
+function encodeOperationName(operationName: unknown): string {
+  const segments =
+    typeof operationName === 'string' ? operationName.split('/') : [];
+  const isValidShape =
+    (segments.length === 2 && segments[0] === 'operations') ||
+    (segments.length === 4 &&
+      segments[0] === 'models' &&
+      segments[2] === 'operations');
+
+  // URL parsing normalizes dot segments, which would climb out of the path.
+  if (
+    !isValidShape ||
+    segments.some(
+      segment => segment === '' || segment === '.' || segment === '..',
+    )
+  ) {
+    throw new InvalidArgumentError({
+      argument: 'operation',
+      message:
+        'Google video operation must contain the operationName returned when the video was started.',
+    });
+  }
+
+  return segments.map(segment => encodeURIComponent(segment)).join('/');
 }
 
 export class GoogleVideoModel implements VideoModelV4 {
@@ -392,10 +423,12 @@ export class GoogleVideoModel implements VideoModelV4 {
     options: Parameters<NonNullable<VideoModelV4['doStatus']>>[0],
   ): Promise<VideoModelV4OperationStatusResult> {
     const currentDate = this.config._internal?.currentDate?.() ?? new Date();
-    const { operationName } = options.operation as { operationName: string };
+    const { operationName } = (options.operation ?? {}) as {
+      operationName: string;
+    };
 
     const { value: statusOperation, responseHeaders } = await getFromApi({
-      url: `${this.config.baseURL}/${operationName}`,
+      url: `${this.config.baseURL}/${encodeOperationName(operationName)}`,
       validateUrl: false,
       headers: combineHeaders(
         await resolve(this.config.headers),

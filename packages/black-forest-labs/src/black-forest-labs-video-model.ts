@@ -15,6 +15,7 @@ import {
   delay,
   getFromApi,
   getTopLevelMediaType,
+  isSameOrigin,
   parseProviderOptions,
   postJsonToApi,
   resolve,
@@ -83,6 +84,51 @@ type BlackForestLabsVideoOperation = {
 };
 
 type BlackForestLabsVideoDoGenerateOptions = VideoModelV4CallOptions;
+
+/**
+ * Regional API hosts that serve polling results (e.g. `api.us1.bfl.ai`).
+ */
+const BFL_API_HOSTNAME = /^api(?:\.[a-z0-9-]+)?\.bfl\.ai$/;
+
+function buildPollUrl(
+  operation: BlackForestLabsVideoOperation,
+  baseURL: string,
+): URL {
+  const { requestId, pollingUrl } = operation;
+  const invalidOperation = () =>
+    new InvalidArgumentError({
+      argument: 'operation',
+      message:
+        'Black Forest Labs video operation must contain the requestId and pollingUrl returned when the video was started.',
+    });
+
+  if (typeof requestId !== 'string' || requestId === '') {
+    throw invalidOperation();
+  }
+
+  let polling: URL;
+  try {
+    polling = new URL(pollingUrl);
+  } catch {
+    throw invalidOperation();
+  }
+
+  let url: URL;
+  if (isSameOrigin(polling.href, baseURL)) {
+    url = new URL(`${baseURL}/get_result`);
+  } else if (
+    polling.protocol === 'https:' &&
+    polling.port === '' &&
+    BFL_API_HOSTNAME.test(polling.hostname)
+  ) {
+    url = new URL(`https://${polling.hostname}/v1/get_result`);
+  } else {
+    throw invalidOperation();
+  }
+
+  url.searchParams.set('id', requestId);
+  return url;
+}
 
 /**
  * The API takes a named tier (`hd`/`fhd`) while the top-level `resolution` is
@@ -592,11 +638,12 @@ export class BlackForestLabsVideoModel implements VideoModelV4 {
     options: Parameters<NonNullable<VideoModelV4['doStatus']>>[0],
   ): Promise<VideoModelV4OperationStatusResult> {
     const currentDate = this.config._internal?.currentDate?.() ?? new Date();
-    const operation = options.operation as BlackForestLabsVideoOperation;
-    const url = new URL(operation.pollingUrl);
-    if (!url.searchParams.has('id')) {
-      url.searchParams.set('id', operation.requestId);
-    }
+    // The operation is caller-supplied: read each field once and only keep the
+    // polling host when it is an API host, so the token reaches get_result only.
+    const operation = {
+      ...(options.operation as BlackForestLabsVideoOperation),
+    };
+    const url = buildPollUrl(operation, this.config.baseURL);
 
     const combinedHeaders = combineHeaders(
       await resolve(this.config.headers),

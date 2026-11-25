@@ -1,6 +1,7 @@
 import {
   AISDKError,
   APICallError,
+  InvalidArgumentError,
   type Experimental_VideoModelV4 as VideoModelV4,
   type Experimental_VideoModelV4OperationStartResult as VideoModelV4OperationStartResult,
   type Experimental_VideoModelV4OperationStatusResult as VideoModelV4OperationStatusResult,
@@ -24,6 +25,24 @@ import {
   type FalVideoModelOptions,
 } from './fal-video-model-options';
 import type { FalVideoModelId } from './fal-video-settings';
+
+function encodePathSegment(requestId: unknown): string {
+  // URL parsing normalizes dot segments, which would climb out of the path.
+  if (
+    typeof requestId !== 'string' ||
+    requestId === '' ||
+    requestId === '.' ||
+    requestId === '..'
+  ) {
+    throw new InvalidArgumentError({
+      argument: 'operation',
+      message:
+        'fal video operation must contain the requestId returned when the video was started.',
+    });
+  }
+
+  return encodeURIComponent(requestId);
+}
 
 interface FalVideoModelConfig extends FalConfig {
   _internal?: {
@@ -63,7 +82,7 @@ export class FalVideoModel implements VideoModelV4 {
 
     const { body } = await this.buildRequestBody(options);
 
-    const { responseUrl, submitUrl } = await this.submitToQueue(
+    const { requestId } = await this.submitToQueue(
       {
         headers: options.headers,
         abortSignal: options.abortSignal,
@@ -73,7 +92,7 @@ export class FalVideoModel implements VideoModelV4 {
     );
 
     return {
-      operation: { responseUrl, submitUrl },
+      operation: { requestId },
       warnings,
       response: {
         timestamp: currentDate,
@@ -87,15 +106,16 @@ export class FalVideoModel implements VideoModelV4 {
     options: Parameters<NonNullable<VideoModelV4['doStatus']>>[0],
   ): Promise<VideoModelV4OperationStatusResult> {
     const currentDate = this.config._internal?.currentDate?.() ?? new Date();
-    const { responseUrl, submitUrl } = options.operation as {
-      responseUrl: string;
-      submitUrl: string;
+    // The operation is caller-supplied: read the id once and never take a URL
+    // or origin from it.
+    const { requestId } = (options.operation ?? {}) as {
+      requestId?: unknown;
     };
+    const encodedRequestId = encodePathSegment(requestId);
 
     try {
       const { value: response, responseHeaders } = await this.fetchStatus({
-        responseUrl,
-        submitUrl,
+        encodedRequestId,
         headers: options.headers,
         abortSignal: options.abortSignal,
       });
@@ -218,7 +238,7 @@ export class FalVideoModel implements VideoModelV4 {
       webhookUrl?: string;
     },
     body: Record<string, unknown>,
-  ): Promise<{ responseUrl: string; submitUrl: string }> {
+  ): Promise<{ requestId: string }> {
     let queuePath = `https://queue.fal.run/fal-ai/${this.normalizedModelId}`;
     if (options.webhookUrl) {
       queuePath += `?fal_webhook=${encodeURIComponent(options.webhookUrl)}`;
@@ -239,42 +259,39 @@ export class FalVideoModel implements VideoModelV4 {
       fetch: this.config.fetch,
     });
 
-    const responseUrl = queueResponse.response_url;
-    if (!responseUrl) {
+    const requestId = queueResponse.request_id;
+    if (!requestId) {
       throw new AISDKError({
         name: 'FAL_VIDEO_GENERATION_ERROR',
-        message: 'No response URL returned from queue endpoint',
+        message: 'No request ID returned from queue endpoint',
       });
     }
 
-    return { responseUrl, submitUrl };
+    return { requestId };
   }
 
   private async fetchStatus({
-    responseUrl,
-    submitUrl,
+    encodedRequestId,
     headers,
     abortSignal,
   }: {
-    responseUrl: string;
-    submitUrl: string;
+    encodedRequestId: string;
     headers?: Record<string, string | undefined>;
     abortSignal?: AbortSignal;
   }): Promise<{
     value: FalVideoResponse;
     responseHeaders?: Record<string, string>;
   }> {
+    // fal serves queue results under the app id, without the endpoint subpath.
+    const appAlias = this.normalizedModelId.split('/')[0];
     const statusUrl = this.config.url({
-      path: responseUrl,
+      path: `https://queue.fal.run/fal-ai/${appAlias}/requests/${encodedRequestId}`,
       modelId: this.modelId,
     });
 
     return getFromApi({
       url: statusUrl,
-      // statusUrl comes from the queue response body.
-      validateUrl: true,
-      credentialedOrigin: submitUrl,
-      trustedOrigin: submitUrl,
+      validateUrl: false,
       headers: combineHeaders(this.config.headers?.(), headers),
       failedResponseHandler: async ({ response, url, requestBodyValues }) => {
         const body = await response.clone().json();
@@ -371,7 +388,6 @@ export class FalVideoModel implements VideoModelV4 {
 
 const falJobResponseSchema = z.object({
   request_id: z.string().nullish(),
-  response_url: z.string().nullish(),
 });
 
 const falVideoResponseSchema = z.object({
