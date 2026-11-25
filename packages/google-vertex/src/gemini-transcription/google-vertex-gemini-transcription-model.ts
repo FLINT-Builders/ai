@@ -27,6 +27,7 @@ import {
 } from '@ai-sdk/provider-utils';
 import { z } from 'zod/v4';
 import { googleVertexFailedResponseHandler } from '../google-vertex-error';
+import { getVertexModelIdPathSegment } from '../google-vertex-model-id';
 import {
   googleVertexGeminiTranscriptionModelOptions,
   type GoogleVertexGeminiTranscriptionModelId,
@@ -155,7 +156,9 @@ export class GoogleVertexGeminiTranscriptionModel implements TranscriptionModelV
   async doGenerate(
     options: Parameters<TranscriptionModelV4['doGenerate']>[0],
   ): Promise<Awaited<ReturnType<TranscriptionModelV4['doGenerate']>>> {
-    if (isLiveTranscriptionModelId(this.modelId)) {
+    const modelIdSegment = getVertexModelIdPathSegment(this.modelId);
+
+    if (isLiveTranscriptionModelId(modelIdSegment)) {
       throw new InvalidArgumentError({
         argument: 'modelId',
         message:
@@ -194,7 +197,7 @@ export class GoogleVertexGeminiTranscriptionModel implements TranscriptionModelV
       responseHeaders,
       rawValue: rawResponse,
     } = await postJsonToApi({
-      url: `${this.config.baseURL}/models/${this.modelId}:generateContent`,
+      url: `${this.config.baseURL}/models/${modelIdSegment}:generateContent`,
       headers: combineHeaders(
         this.config.headers ? await resolve(this.config.headers) : undefined,
         options.headers,
@@ -262,7 +265,9 @@ export class GoogleVertexGeminiTranscriptionModel implements TranscriptionModelV
   ): Promise<
     Awaited<ReturnType<NonNullable<TranscriptionModelV4['doStream']>>>
   > {
-    if (!isLiveTranscriptionModelId(this.modelId)) {
+    const modelIdSegment = getVertexModelIdPathSegment(this.modelId);
+
+    if (!isLiveTranscriptionModelId(modelIdSegment)) {
       throw new InvalidArgumentError({
         argument: 'modelId',
         message:
@@ -286,7 +291,7 @@ export class GoogleVertexGeminiTranscriptionModel implements TranscriptionModelV
     );
 
     const { project, location } = this.config;
-    const modelResource = `projects/${project}/locations/${location}/publishers/google/models/${this.modelId}`;
+    const modelResource = `projects/${project}/locations/${location}/publishers/google/models/${modelIdSegment}`;
     const url = new URL(
       `wss://${vertexHost(location)}/ws/${liveWebSocketPath}`,
     );
