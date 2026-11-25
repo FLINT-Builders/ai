@@ -1,5 +1,6 @@
 import {
   AISDKError,
+  InvalidArgumentError,
   type Experimental_VideoModelV4 as VideoModelV4,
   type Experimental_VideoModelV4OperationStartResult as VideoModelV4OperationStartResult,
   type Experimental_VideoModelV4OperationStatusResult as VideoModelV4OperationStatusResult,
@@ -23,6 +24,24 @@ import {
   type ReplicateVideoModelOptions,
 } from './replicate-video-model-options';
 import type { ReplicateVideoModelId } from './replicate-video-settings';
+
+function encodePathSegment(predictionId: unknown): string {
+  // URL parsing normalizes dot segments, which would climb out of the path.
+  if (
+    typeof predictionId !== 'string' ||
+    predictionId === '' ||
+    predictionId === '.' ||
+    predictionId === '..'
+  ) {
+    throw new InvalidArgumentError({
+      argument: 'operation',
+      message:
+        'Replicate video operation must contain the predictionId returned when the video was started.',
+    });
+  }
+
+  return encodeURIComponent(predictionId);
+}
 
 interface ReplicateVideoModelConfig {
   provider: string;
@@ -217,7 +236,7 @@ export class ReplicateVideoModel implements VideoModelV4 {
     });
 
     return {
-      operation: { getUrl: prediction.urls.get },
+      operation: { predictionId: prediction.id },
       warnings,
       response: {
         timestamp: currentDate,
@@ -231,14 +250,17 @@ export class ReplicateVideoModel implements VideoModelV4 {
     options: Parameters<NonNullable<VideoModelV4['doStatus']>>[0],
   ): Promise<VideoModelV4OperationStatusResult> {
     const currentDate = this.config._internal?.currentDate?.() ?? new Date();
-    const { getUrl } = options.operation as { getUrl: string };
+    // The operation is caller-supplied: read the id once and build the URL
+    // from the configured base URL so only the prediction endpoint is reached.
+    const { predictionId } = (options.operation ?? {}) as {
+      predictionId?: unknown;
+    };
+    const statusUrl = `${this.config.baseURL}/predictions/${encodePathSegment(predictionId)}`;
 
     const { value: prediction, responseHeaders } = await getFromApi({
-      url: getUrl,
-      // getUrl comes from the provider response body.
-      validateUrl: true,
+      url: statusUrl,
+      validateUrl: false,
       credentialedOrigin: this.config.baseURL,
-      trustedOrigin: this.config.baseURL,
       headers: combineHeaders(
         await resolve(this.config.headers),
         options.headers,
@@ -321,9 +343,6 @@ const replicatePredictionSchema = z.object({
   status: z.enum(['starting', 'processing', 'succeeded', 'failed', 'canceled']),
   output: z.string().nullish(),
   error: z.string().nullish(),
-  urls: z.object({
-    get: z.string(),
-  }),
   metrics: z
     .object({
       predict_time: z.number().nullish(),

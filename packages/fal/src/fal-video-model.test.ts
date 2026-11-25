@@ -120,15 +120,13 @@ describe('FalVideoModel', () => {
   });
 
   describe('doStart', () => {
-    it('should submit to queue and return operation with responseUrl', async () => {
+    it('should submit to queue and return operation with requestId', async () => {
       const model = createBasicModel();
 
       const result = await model.doStart({ ...defaultOptions });
 
       expect(result.operation).toStrictEqual({
-        responseUrl:
-          'https://queue.fal.run/fal-ai/luma-dream-machine/requests/test-request-id-123',
-        submitUrl: 'https://queue.fal.run/fal-ai/luma-dream-machine',
+        requestId: 'test-request-id-123',
       });
       expect(result.warnings).toStrictEqual([]);
       expect(result.response.modelId).toBe('luma-dream-machine');
@@ -231,7 +229,7 @@ describe('FalVideoModel', () => {
       expect(result.warnings).toStrictEqual([]);
     });
 
-    it('should throw error when no response URL returned', async () => {
+    it('should throw error when no request ID returned', async () => {
       server.urls['https://queue.fal.run/fal-ai/luma-dream-machine'].response =
         {
           type: 'json-value',
@@ -241,7 +239,7 @@ describe('FalVideoModel', () => {
       const model = createBasicModel();
 
       await expect(model.doStart({ ...defaultOptions })).rejects.toMatchObject({
-        message: 'No response URL returned from queue endpoint',
+        message: 'No request ID returned from queue endpoint',
       });
     });
 
@@ -452,8 +450,7 @@ describe('FalVideoModel', () => {
 
       const result = await model.doStatus({
         operation: {
-          responseUrl:
-            'https://queue.fal.run/fal-ai/luma-dream-machine/requests/test-request-id-123',
+          requestId: 'test-request-id-123',
         },
       });
 
@@ -490,8 +487,7 @@ describe('FalVideoModel', () => {
 
       const result = await model.doStatus({
         operation: {
-          responseUrl:
-            'https://queue.fal.run/fal-ai/luma-dream-machine/requests/test-id',
+          requestId: 'test-id',
         },
       });
 
@@ -504,8 +500,7 @@ describe('FalVideoModel', () => {
 
       const result = await model.doStatus({
         operation: {
-          responseUrl:
-            'https://queue.fal.run/fal-ai/luma-dream-machine/requests/test-request-id-123',
+          requestId: 'test-request-id-123',
         },
       });
 
@@ -543,8 +538,7 @@ describe('FalVideoModel', () => {
       await expect(
         model.doStatus({
           operation: {
-            responseUrl:
-              'https://queue.fal.run/fal-ai/luma-dream-machine/requests/test-request-id-123',
+            requestId: 'test-request-id-123',
           },
         }),
       ).rejects.toMatchObject({
@@ -575,8 +569,7 @@ describe('FalVideoModel', () => {
 
       const result = await model.doStatus({
         operation: {
-          responseUrl:
-            'https://queue.fal.run/fal-ai/luma-dream-machine/requests/test-id',
+          requestId: 'test-id',
         },
       });
 

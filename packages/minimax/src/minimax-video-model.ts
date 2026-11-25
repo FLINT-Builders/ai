@@ -1,5 +1,6 @@
 import {
   AISDKError,
+  InvalidArgumentError,
   type Experimental_VideoModelV4 as VideoModelV4,
   type Experimental_VideoModelV4File as VideoModelV4File,
   type Experimental_VideoModelV4OperationStartResult as VideoModelV4OperationStartResult,
@@ -131,6 +132,24 @@ function nonImageFrameMediaType(file: VideoModelV4File): string | undefined {
 
   const topLevelMediaType = getTopLevelMediaType(file.mediaType);
   return topLevelMediaType === 'image' ? undefined : topLevelMediaType;
+}
+
+function encodePathSegment(taskId: unknown): string {
+  // URL parsing normalizes dot segments, which would climb out of the path.
+  if (
+    typeof taskId !== 'string' ||
+    taskId === '' ||
+    taskId === '.' ||
+    taskId === '..'
+  ) {
+    throw new InvalidArgumentError({
+      argument: 'operation',
+      message:
+        'MiniMax video operation must contain the taskId returned when the video was started.',
+    });
+  }
+
+  return encodeURIComponent(taskId);
 }
 
 export class MiniMaxVideoModel implements VideoModelV4 {
@@ -638,7 +657,7 @@ export class MiniMaxVideoModel implements VideoModelV4 {
       options.operation as MiniMaxVideoOperation;
     const baseURL = this.config.baseURL;
     const { value: statusResponse, responseHeaders } = await getFromApi({
-      url: `${baseURL}/v2/query/video_generation/${encodeURIComponent(taskId)}`,
+      url: `${baseURL}/v2/query/video_generation/${encodePathSegment(taskId)}`,
       validateUrl: true,
       trustedOrigin: baseURL,
       headers: combineHeaders(

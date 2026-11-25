@@ -1,5 +1,6 @@
 import {
   AISDKError,
+  InvalidArgumentError,
   type Experimental_VideoModelV4 as VideoModelV4,
   type Experimental_VideoModelV4CallOptions as VideoModelV4CallOptions,
   type Experimental_VideoModelV4File as VideoModelV4File,
@@ -281,6 +282,24 @@ function resolveReferenceUrls(
   }
 
   return alibabaOptions?.referenceUrls ?? undefined;
+}
+
+function encodePathSegment(taskId: unknown): string {
+  // URL parsing normalizes dot segments, which would climb out of the path.
+  if (
+    typeof taskId !== 'string' ||
+    taskId === '' ||
+    taskId === '.' ||
+    taskId === '..'
+  ) {
+    throw new InvalidArgumentError({
+      argument: 'operation',
+      message:
+        'Alibaba video operation must contain the taskId returned when the video was started.',
+    });
+  }
+
+  return encodeURIComponent(taskId);
 }
 
 export class AlibabaVideoModel implements VideoModelV4 {
@@ -651,10 +670,10 @@ export class AlibabaVideoModel implements VideoModelV4 {
     options: Parameters<NonNullable<VideoModelV4['doStatus']>>[0],
   ): Promise<VideoModelV4OperationStatusResult> {
     const currentDate = this.config._internal?.currentDate?.() ?? new Date();
-    const { taskId } = options.operation as { taskId: string };
+    const { taskId } = (options.operation ?? {}) as { taskId: string };
 
     const { value: statusResponse, responseHeaders } = await getFromApi({
-      url: `${this.config.baseURL}/api/v1/tasks/${taskId}`,
+      url: `${this.config.baseURL}/api/v1/tasks/${encodePathSegment(taskId)}`,
       validateUrl: false,
       headers: combineHeaders(
         await resolve(this.config.headers),
