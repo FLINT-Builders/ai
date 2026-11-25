@@ -66,6 +66,7 @@ export function MCPAppFrame({
   inputRef.current = input;
   outputRef.current = output;
   hostContextRef.current = hostContext;
+  const resourceUri = app.resourceUri;
   const sandboxUrl = String(sandbox.url);
   const targetOrigin = sandbox.targetOrigin ?? deriveTargetOrigin(sandboxUrl);
   const resourceCSP = getMCPAppCSP(resource.meta?.csp);
@@ -104,6 +105,7 @@ export function MCPAppFrame({
     const bridge = new MCPAppBridge({
       targetWindow,
       targetOrigin,
+      resourceUri,
       handlers: bridgeHandlersRef.current,
       hostInfo,
       hostContext: hostContextRef.current,
@@ -147,6 +149,7 @@ export function MCPAppFrame({
     resource.html,
     resourceAllow,
     resourceCSP,
+    resourceUri,
     sandboxUrl,
     targetOrigin,
   ]);
