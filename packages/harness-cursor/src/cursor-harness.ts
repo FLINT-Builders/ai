@@ -15,6 +15,58 @@ import { resolveCursorSubscriptionEnvironment } from './cursor-subscription';
 
 const CURSOR_CLIENT_APP = `ai-sdk/harness-cursor/${VERSION}`;
 
+const CURSOR_AGENT_RELEASE_VERSION = '2026.11.22-e9042b2';
+const CURSOR_AGENT_RELEASE_SHA256 = {
+  'linux/x64':
+    '7663b1c5d1b56e095ef8e23bef38d66df6cfd665c4873470214e0e411f0f97b3',
+  'linux/arm64':
+    '7b7dd0020fb9a2a9e1e7e3f39e2f9f512d1dd9577174ecda8aa82ac31dbc9565',
+  'darwin/x64':
+    '16cc7314128243b24d74575cae5f7e1a215656d48115d55084e2d6725ef7c542',
+  'darwin/arm64':
+    '92f39e448218897538bd801cdb01d69106ab37a86aaf3dc0e6b55159c79b75e2',
+} as const;
+
+/*
+ * Installs a pinned Cursor Agent CLI package and verifies its SHA-256 digest
+ * before extracting it. The package is never executed or unpacked unless the
+ * digest matches, so the bytes served by the download host cannot run in the
+ * sandbox.
+ */
+const CURSOR_AGENT_INSTALL_COMMAND = `case "$(uname -s)-$(uname -m)" in
+  Linux-x86_64|Linux-amd64) cursor_platform=linux/x64; cursor_sha256=${CURSOR_AGENT_RELEASE_SHA256['linux/x64']} ;;
+  Linux-aarch64|Linux-arm64) cursor_platform=linux/arm64; cursor_sha256=${CURSOR_AGENT_RELEASE_SHA256['linux/arm64']} ;;
+  Darwin-x86_64) cursor_platform=darwin/x64; cursor_sha256=${CURSOR_AGENT_RELEASE_SHA256['darwin/x64']} ;;
+  Darwin-arm64|Darwin-aarch64) cursor_platform=darwin/arm64; cursor_sha256=${CURSOR_AGENT_RELEASE_SHA256['darwin/arm64']} ;;
+  *) echo "cursor: unsupported platform $(uname -s) $(uname -m)" >&2; exit 1 ;;
+esac
+cursor_download_dir="$(mktemp -d "$PWD/.cursor-agent-download.XXXXXX")"
+trap 'rm -rf "$cursor_download_dir"' EXIT
+cursor_archive="$cursor_download_dir/agent-cli-package.tar.gz"
+cursor_url="https://downloads.cursor.com/lab/${CURSOR_AGENT_RELEASE_VERSION}/$cursor_platform/agent-cli-package.tar.gz"
+if command -v curl >/dev/null 2>&1; then
+  curl -fsSL "$cursor_url" -o "$cursor_archive"
+else
+  wget -qO "$cursor_archive" "$cursor_url"
+fi
+if command -v sha256sum >/dev/null 2>&1; then
+  cursor_actual_sha256="$(sha256sum "$cursor_archive" | cut -d ' ' -f 1)"
+else
+  cursor_actual_sha256="$(shasum -a 256 "$cursor_archive" | cut -d ' ' -f 1)"
+fi
+if [ "$cursor_actual_sha256" != "$cursor_sha256" ]; then
+  echo "cursor: SHA-256 mismatch for $cursor_url" >&2
+  exit 1
+fi
+mkdir "$cursor_download_dir/package"
+tar --strip-components=1 -xzf "$cursor_archive" -C "$cursor_download_dir/package"
+cursor_version_dir="$HOME/.local/share/cursor-agent/versions/${CURSOR_AGENT_RELEASE_VERSION}"
+mkdir -p "$(dirname "$cursor_version_dir")" "$HOME/.local/bin"
+rm -rf "$cursor_version_dir"
+mv "$cursor_download_dir/package" "$cursor_version_dir"
+ln -sfn "$cursor_version_dir/cursor-agent" "$HOME/.local/bin/agent"
+ln -sfn "$cursor_version_dir/cursor-agent" "$HOME/.local/bin/cursor-agent"`;
+
 export type CursorAuthenticationMode = ACPAuthenticationMode;
 
 export type CursorHarnessSettings = {
@@ -382,7 +434,7 @@ export function createCursor(
     },
     source: {
       type: 'install-command',
-      command: 'curl https://cursor.com/install -fsS | bash',
+      command: CURSOR_AGENT_INSTALL_COMMAND,
     },
     executable: 'agent',
     args: ['--disable-auto-update', 'acp'],

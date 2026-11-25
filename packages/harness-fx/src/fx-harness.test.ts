@@ -227,7 +227,35 @@ describe('createFx', () => {
           },
         },
         "source": {
-          "command": "curl -fsSL https://fx.sh/setup.sh | bash",
+          "command": "case "$(uname -s)-$(uname -m)" in
+        Linux-x86_64|Linux-amd64) fx_platform=linux-x86_64; fx_sha256=e4912040c1fb2a1cda4162fd8f40fc66aa80a1a0a306af6332b5426bdcac99b6 ;;
+        Linux-aarch64|Linux-arm64) fx_platform=linux-aarch64; fx_sha256=432a343b7d0fb15dce454ab1e100401df1ee4f01fb1e689a64557e6b9a57ece5 ;;
+        Darwin-x86_64) fx_platform=macos-x86_64; fx_sha256=becc6f68d42ff20606cd783b72630287ab92bc6eef2d700ed39de17d52b7dd3e ;;
+        Darwin-arm64|Darwin-aarch64) fx_platform=macos-aarch64; fx_sha256=f37eea7eaf248f7a75765fc3f71be77bcfbc43eaef5cbe76d721dadb97479cfe ;;
+        *) echo "fx: unsupported platform $(uname -s) $(uname -m)" >&2; exit 1 ;;
+      esac
+      fx_download_dir="$(mktemp -d "$PWD/.fx-download.XXXXXX")"
+      trap 'rm -rf "$fx_download_dir"' EXIT
+      fx_archive="$fx_download_dir/fx.tar.gz"
+      fx_url="https://releases.fx.sh/v0.0.18/fx-$fx_platform.tar.gz"
+      if command -v curl >/dev/null 2>&1; then
+        curl -fsSL "$fx_url" -o "$fx_archive"
+      else
+        wget -qO "$fx_archive" "$fx_url"
+      fi
+      if command -v sha256sum >/dev/null 2>&1; then
+        fx_actual_sha256="$(sha256sum "$fx_archive" | cut -d ' ' -f 1)"
+      else
+        fx_actual_sha256="$(shasum -a 256 "$fx_archive" | cut -d ' ' -f 1)"
+      fi
+      if [ "$fx_actual_sha256" != "$fx_sha256" ]; then
+        echo "fx: SHA-256 mismatch for $fx_url" >&2
+        exit 1
+      fi
+      tar -xzf "$fx_archive" -C "$fx_download_dir" fx
+      mkdir -p "$HOME/.local/bin"
+      mv -f "$fx_download_dir/fx" "$HOME/.local/bin/fx"
+      chmod +x "$HOME/.local/bin/fx"",
           "type": "install-command",
         },
         "version": "v1",
