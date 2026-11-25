@@ -14,10 +14,14 @@ import {
   MultiServerMCPClient,
   type ClientConfig,
 } from '@langchain/mcp-adapters';
-import { createDeepAgent } from 'deepagents';
+import { createDeepAgent, createFilesystemMiddleware } from 'deepagents';
 import { createMiddleware, toolStrategy } from 'langchain';
 import type { StartMessage } from '../deepagents-bridge-protocol';
-import { buildInterruptOn, collectActionRequests } from './approvals';
+import {
+  buildInterruptOn,
+  collectActionRequests,
+  findUnclassifiedBuiltinTools,
+} from './approvals';
 import {
   createDeepAgentsStreamEventState,
   createEmitStreamEvent,
@@ -34,7 +38,10 @@ import {
   removeMemorySaverSnapshot,
   saveMemorySaver,
 } from './persistent-memory-saver';
-import { createBuiltinToolFilteringMiddleware } from './tool-filtering';
+import {
+  createBuiltinToolFilteringMiddleware,
+  createBuiltinToolFilteringSubagents,
+} from './tool-filtering';
 
 const HARNESS_CLIENT_APP = procEnv.AI_SDK_HARNESS_CLIENT_APP;
 
@@ -192,6 +199,17 @@ const responseFormatMiddleware = createMiddleware({
   },
 });
 
+function assertBuiltinToolsClassified(): void {
+  const unclassified = findUnclassifiedBuiltinTools(
+    (createFilesystemMiddleware().tools ?? []).map(builtin => builtin.name),
+  );
+  if (unclassified.length > 0) {
+    throw new Error(
+      `Deep Agents built-in tool(s) [${unclassified.join(', ')}] have no approval classification; refusing to run them ungated.`,
+    );
+  }
+}
+
 // Host tools become LangChain tools that emit a `tool-call` and block on the host's `tool-result`.
 function buildHostTools(toolSchemas: StartMessage['tools']) {
   return (toolSchemas ?? []).map(schema =>
@@ -254,6 +272,7 @@ async function runTurn(start: StartMessage, turn: BridgeTurn): Promise<void> {
     agentConfigurationSignature !== nextAgentConfigurationSignature ||
     start.skillsChanged === true;
   if (rebuildAgent) {
+    assertBuiltinToolsClassified();
     if (agent != null && start.skillsChanged === true) {
       await agent.updateState(config, {
         skillsMetadata: new Overwrite([]),
@@ -286,8 +305,15 @@ async function runTurn(start: StartMessage, turn: BridgeTurn): Promise<void> {
       externalTool => !hostToolNames.has(externalTool.name),
     );
     mcpToolNames = new Set(mcpTools.map(mcpTool => mcpTool.name));
+    const agentTools = [...mcpTools, ...hostTools];
+    const subagents = createBuiltinToolFilteringSubagents({
+      builtinToolFilteringMiddleware,
+      tools: agentTools,
+      skills: start.skillsPaths,
+    });
     agent = createDeepAgent({
-      tools: [...mcpTools, ...hostTools],
+      tools: agentTools,
+      ...(subagents ? { subagents } : {}),
       backend: createLocalShellBackend({ rootDir: workdir }),
       systemPrompt: start.instructions
         ? { suffix: start.instructions }

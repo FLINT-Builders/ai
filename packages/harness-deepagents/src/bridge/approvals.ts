@@ -9,6 +9,7 @@ export const NATIVE_TOOL_KIND: Readonly<
   read_file: 'readonly',
   write_file: 'edit',
   edit_file: 'edit',
+  delete: 'edit',
   execute: 'bash',
   grep: 'readonly',
   glob: 'readonly',
@@ -16,6 +17,17 @@ export const NATIVE_TOOL_KIND: Readonly<
   task: 'edit',
   write_todos: 'edit',
 };
+
+export function isNativeBuiltinTool(nativeName: string): boolean {
+  return Object.prototype.hasOwnProperty.call(NATIVE_TOOL_KIND, nativeName);
+}
+
+// Built-ins missing from NATIVE_TOOL_KIND would run without approval gating or filtering.
+export function findUnclassifiedBuiltinTools(
+  nativeNames: readonly string[],
+): string[] {
+  return nativeNames.filter(name => !isNativeBuiltinTool(name));
+}
 
 const NATIVE_TO_COMMON: Readonly<Record<string, string>> = {
   read_file: 'read',
@@ -28,15 +40,21 @@ export function toCommonName(nativeName: string): string {
   return NATIVE_TO_COMMON[nativeName] ?? nativeName;
 }
 
+// Deleting is at least as destructive as writing or editing, so denying either also denies delete.
+const IMPLIED_DENIALS: ReadonlyMap<string, readonly string[]> = new Map([
+  ['delete', ['write', 'edit']],
+]);
+
 export function isBuiltinToolIncluded(input: {
   nativeName: string;
   toolFiltering: StartMessage['builtinToolFiltering'];
 }): boolean {
   if (input.toolFiltering == null) return true;
+  const { mode, toolNames } = input.toolFiltering;
   const toolName = toCommonName(input.nativeName);
-  return input.toolFiltering.mode === 'allow'
-    ? input.toolFiltering.toolNames.includes(toolName)
-    : !input.toolFiltering.toolNames.includes(toolName);
+  if (mode === 'allow') return toolNames.includes(toolName);
+  const deniedBy = [toolName, ...(IMPLIED_DENIALS.get(toolName) ?? [])];
+  return !deniedBy.some(name => toolNames.includes(name));
 }
 
 export function builtinToolRequiresApproval(
