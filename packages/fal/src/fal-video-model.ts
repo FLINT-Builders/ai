@@ -19,6 +19,7 @@ import {
 import { z } from 'zod/v4';
 import type { FalConfig } from './fal-config';
 import { falErrorDataSchema, falFailedResponseHandler } from './fal-error';
+import { falModelIdToPath } from './fal-model-id';
 import {
   falVideoModelOptionsSchema,
   type FalVideoModelOptions,
@@ -219,7 +220,7 @@ export class FalVideoModel implements VideoModelV4 {
     },
     body: Record<string, unknown>,
   ): Promise<{ responseUrl: string; submitUrl: string }> {
-    let queuePath = `https://queue.fal.run/fal-ai/${this.normalizedModelId}`;
+    let queuePath = `https://queue.fal.run/fal-ai/${falModelIdToPath(this.normalizedModelId)}`;
     if (options.webhookUrl) {
       queuePath += `?fal_webhook=${encodeURIComponent(options.webhookUrl)}`;
     }
