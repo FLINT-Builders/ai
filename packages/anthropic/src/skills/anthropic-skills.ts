@@ -10,6 +10,7 @@ import {
   type Resolvable,
 } from '@ai-sdk/provider-utils';
 import { anthropicFailedResponseHandler } from '../anthropic-error';
+import { encodePathSegment } from '../encode-path-segment';
 import {
   anthropicSkillResponseSchema,
   anthropicSkillVersionResponseSchema,
@@ -20,17 +21,6 @@ interface AnthropicSkillsConfig {
   baseURL: string;
   headers: Resolvable<Record<string, string | undefined>>;
   fetch?: FetchFunction;
-}
-
-function encodePathSegment(value: string): string {
-  const encodedValue = encodeURIComponent(value);
-
-  // URL parsing normalizes both literal and percent-encoded dot segments.
-  return encodedValue === '.'
-    ? '%252E'
-    : encodedValue === '..'
-      ? '%252E%252E'
-      : encodedValue;
 }
 
 export class AnthropicSkills implements SkillsV4 {

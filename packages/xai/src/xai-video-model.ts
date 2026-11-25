@@ -28,6 +28,7 @@ import {
   type XaiParsedVideoModelOptions,
 } from './xai-video-model-options';
 import type { XaiVideoModelId } from './xai-video-settings';
+import { encodePathSegment } from './encode-path-segment';
 
 interface XaiVideoModelConfig {
   provider: string;
@@ -37,17 +38,6 @@ interface XaiVideoModelConfig {
   _internal?: {
     currentDate?: () => Date;
   };
-}
-
-function encodePathSegment(value: string): string {
-  const encodedValue = encodeURIComponent(value);
-
-  // URL parsing normalizes both literal and percent-encoded dot segments.
-  return encodedValue === '.'
-    ? '%252E'
-    : encodedValue === '..'
-      ? '%252E%252E'
-      : encodedValue;
 }
 
 const RESOLUTION_MAP: Record<string, string> = {

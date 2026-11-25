@@ -34,6 +34,7 @@ import {
   openaiFilesOptionsSchema,
   type OpenAIFilesOptions,
 } from './openai-files-options';
+import { encodePathSegment } from '../encode-path-segment';
 
 interface OpenAIFilesConfig {
   provider: string;
@@ -43,17 +44,6 @@ interface OpenAIFilesConfig {
 }
 
 type OpenAIFilesResponse = InferSchema<typeof openaiFilesResponseSchema>;
-
-function encodePathSegment(value: string): string {
-  const encodedValue = encodeURIComponent(value);
-
-  // URL parsing normalizes both literal and percent-encoded dot segments.
-  return encodedValue === '.'
-    ? '%252E'
-    : encodedValue === '..'
-      ? '%252E%252E'
-      : encodedValue;
-}
 
 export class OpenAIFiles implements FilesV4 {
   readonly specificationVersion = 'v4';

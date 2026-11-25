@@ -43,6 +43,7 @@ import { z } from 'zod/v4';
 import { getResponseMetadata } from './get-response-metadata';
 import { mapXaiFinishReason } from './map-xai-finish-reason';
 import { xaiFailedResponseHandler } from './xai-error';
+import { encodePathSegment } from './encode-path-segment';
 import { xaiFilesResponseSchema } from './files/xai-files-api';
 import {
   XaiResponsesLanguageModel,
@@ -370,7 +371,7 @@ export class XaiBatch implements BatchV4<XaiBatchModelIds> {
   ): Promise<BatchV4CancelResult> {
     await postJsonToApi({
       url: this.getUrl(
-        `/batches/${encodeURIComponent(options.batchId)}:cancel`,
+        `/batches/${getBatchIdPathSegment(options.batchId)}:cancel`,
       ),
       headers: combineHeaders(this.options.config.headers?.(), options.headers),
       body: {},
@@ -437,7 +438,7 @@ export class XaiBatch implements BatchV4<XaiBatchModelIds> {
     options: BatchV4OperationOptions,
   ): Promise<XaiBatchResponse> {
     const { value: batch } = await getFromApi({
-      url: this.getUrl(`/batches/${encodeURIComponent(options.batchId)}`),
+      url: this.getUrl(`/batches/${getBatchIdPathSegment(options.batchId)}`),
       headers: combineHeaders(this.options.config.headers?.(), options.headers),
       failedResponseHandler: xaiFailedResponseHandler,
       successfulResponseHandler: createJsonResponseHandler(
@@ -466,7 +467,7 @@ export class XaiBatch implements BatchV4<XaiBatchModelIds> {
 
       const { value: page } = await getFromApi({
         url: this.getUrl(
-          `/batches/${encodeURIComponent(options.batchId)}/results?${query}`,
+          `/batches/${getBatchIdPathSegment(options.batchId)}/results?${query}`,
         ),
         headers: combineHeaders(
           this.options.config.headers?.(),
@@ -922,4 +923,15 @@ function convertXaiBatchTextUsage(
     },
     raw: usage,
   };
+}
+
+function getBatchIdPathSegment(batchId: string): string {
+  if (batchId.trim() === '') {
+    throw new InvalidArgumentError({
+      argument: 'batchId',
+      message: 'xAI batch ID must not be empty.',
+    });
+  }
+
+  return encodePathSegment(batchId);
 }

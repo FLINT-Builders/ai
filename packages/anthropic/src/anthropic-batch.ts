@@ -57,6 +57,7 @@ import type {
   AnthropicUsageIteration,
 } from './anthropic-message-metadata';
 import { convertAnthropicUsage } from './convert-anthropic-usage';
+import { encodePathSegment } from './encode-path-segment';
 import { mapAnthropicStopReason } from './map-anthropic-stop-reason';
 
 const anthropicBatchRequestIdPattern = /^[A-Za-z0-9_-]{1,64}$/;
@@ -328,7 +329,9 @@ export class AnthropicBatch implements BatchV4<{
     options: BatchV4OperationOptions,
   ): Promise<BatchV4CancelResult> {
     await postJsonToApi({
-      url: this.getBatchUrl(`/${encodeURIComponent(options.batchId)}/cancel`),
+      url: this.getBatchUrl(
+        `/${getBatchIdPathSegment(options.batchId)}/cancel`,
+      ),
       headers: await this.getBatchHeaders(options.headers),
       body: {},
       failedResponseHandler: anthropicFailedResponseHandler,
@@ -423,7 +426,7 @@ export class AnthropicBatch implements BatchV4<{
     options: BatchV4OperationOptions,
   ): Promise<AnthropicBatchResponse> {
     const { value: batch } = await getFromApi({
-      url: this.getBatchUrl(`/${encodeURIComponent(options.batchId)}`),
+      url: this.getBatchUrl(`/${getBatchIdPathSegment(options.batchId)}`),
       validateUrl: false,
       headers: await this.getBatchHeaders(options.headers),
       failedResponseHandler: anthropicFailedResponseHandler,
@@ -506,6 +509,17 @@ async function getAnthropicBatchProviderBetas({
   );
 
   return anthropicOptions.anthropicBeta ?? [];
+}
+
+function getBatchIdPathSegment(batchId: string): string {
+  if (batchId.trim() === '') {
+    throw new InvalidArgumentError({
+      argument: 'batchId',
+      message: 'Anthropic batch ID must not be empty.',
+    });
+  }
+
+  return encodePathSegment(batchId);
 }
 
 function validateRequestIds(requests: ReadonlyArray<AnthropicBatchRequest>) {
