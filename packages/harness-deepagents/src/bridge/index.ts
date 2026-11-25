@@ -232,10 +232,18 @@ async function runTurn(start: StartMessage, turn: BridgeTurn): Promise<void> {
   const emit = (event: Record<string, unknown>) =>
     turn.emit(event as BridgeEvent);
 
-  const interruptOn = buildInterruptOn(
-    start.permissionMode,
-    start.builtinToolFiltering,
-  );
+  // Everything the cached agent bakes in at build time; any change must rebuild it.
+  const agentConfiguration = {
+    instructions: start.instructions,
+    tools: start.tools,
+    skillsPaths: start.skillsPaths,
+    interruptOn: buildInterruptOn(
+      start.permissionMode,
+      start.builtinToolFiltering,
+    ),
+    builtinToolFiltering: start.builtinToolFiltering,
+    mcpServers: start.mcpServers,
+  };
   const config = {
     version: 'v2' as const,
     configurable: { thread_id: 'bridge-session' },
@@ -244,11 +252,7 @@ async function runTurn(start: StartMessage, turn: BridgeTurn): Promise<void> {
       : {}),
     signal: turn.abortSignal,
   };
-  const nextAgentConfigurationSignature = JSON.stringify({
-    instructions: start.instructions,
-    tools: start.tools,
-    skillsPaths: start.skillsPaths,
-  });
+  const nextAgentConfigurationSignature = JSON.stringify(agentConfiguration);
   const rebuildAgent =
     agent == null ||
     agentConfigurationSignature !== nextAgentConfigurationSignature ||
@@ -262,7 +266,7 @@ async function runTurn(start: StartMessage, turn: BridgeTurn): Promise<void> {
     await closeMcpClient();
     const builtinToolFilteringMiddleware = createBuiltinToolFilteringMiddleware(
       {
-        builtinToolFiltering: start.builtinToolFiltering,
+        builtinToolFiltering: agentConfiguration.builtinToolFiltering,
         emit: event => {
           const turn = currentTurn;
           if (!turn) throw new Error('no active turn');
@@ -277,10 +281,10 @@ async function runTurn(start: StartMessage, turn: BridgeTurn): Promise<void> {
         ? [builtinToolFilteringMiddleware]
         : []),
     ];
-    const hostTools = buildHostTools(start.tools);
+    const hostTools = buildHostTools(agentConfiguration.tools);
     const hostToolNames = new Set(hostTools.map(hostTool => hostTool.name));
     const externalTools = await loadMcpTools({
-      mcpServers: start.mcpServers,
+      mcpServers: agentConfiguration.mcpServers,
     });
     const mcpTools = externalTools.filter(
       externalTool => !hostToolNames.has(externalTool.name),
@@ -289,14 +293,18 @@ async function runTurn(start: StartMessage, turn: BridgeTurn): Promise<void> {
     agent = createDeepAgent({
       tools: [...mcpTools, ...hostTools],
       backend: createLocalShellBackend({ rootDir: workdir }),
-      systemPrompt: start.instructions
-        ? { suffix: start.instructions }
+      systemPrompt: agentConfiguration.instructions
+        ? { suffix: agentConfiguration.instructions }
         : undefined,
       // Native skills loaded from the source dirs ($HOME-materialized + <workDir> for repo-provided skills).
-      ...(start.skillsPaths?.length ? { skills: start.skillsPaths } : {}),
+      ...(agentConfiguration.skillsPaths?.length
+        ? { skills: agentConfiguration.skillsPaths }
+        : {}),
       ...(middleware.length > 0 ? { middleware } : {}),
       // Gate built-in tools behind HITL approval when the permission mode requires it.
-      ...(interruptOn ? { interruptOn } : {}),
+      ...(agentConfiguration.interruptOn
+        ? { interruptOn: agentConfiguration.interruptOn }
+        : {}),
       // Real instance (LangGraph rejects `true` for root graphs); gives multi-turn memory.
       checkpointer,
     });
