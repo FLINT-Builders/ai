@@ -18,6 +18,7 @@ export function convertLanguageModelContent<TOOLS extends ToolSet>({
   toolApprovalRequests,
   toolApprovalResponses,
   tools,
+  toolApprovalSignatures,
 }: {
   content: Array<LanguageModelV4Content>;
   toolCalls: Array<TypedToolCall<TOOLS>>;
@@ -25,6 +26,10 @@ export function convertLanguageModelContent<TOOLS extends ToolSet>({
   toolApprovalRequests: Array<ToolApprovalRequestOutput<TOOLS>>;
   toolApprovalResponses: Array<ToolApprovalResponseOutput<TOOLS>>;
   tools: TOOLS | undefined;
+  /**
+   * Signatures for provider-emitted tool approval requests, keyed by approval id.
+   */
+  toolApprovalSignatures?: Map<string, string>;
 }): Array<ContentPart<TOOLS>> {
   const contentParts: Array<ContentPart<TOOLS>> = [];
   const toolOutputsWithApprovalResponses: Array<ToolOutput<TOOLS>> = [];
@@ -178,10 +183,13 @@ export function convertLanguageModelContent<TOOLS extends ToolSet>({
           });
         }
 
+        const signature = toolApprovalSignatures?.get(part.approvalId);
+
         contentParts.push({
           type: 'tool-approval-request' as const,
           approvalId: part.approvalId,
           toolCall,
+          ...(signature != null ? { signature } : {}),
         });
         break;
       }

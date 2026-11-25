@@ -69,6 +69,7 @@ import { sumTokenCounts } from './sum-token-counts';
 import type { TypedToolCall } from './tool-call';
 import type { ToolCallRepairFunction } from './tool-call-repair-function';
 import type { TypedToolError } from './tool-error';
+import { maybeSignApproval } from './tool-approval-signature';
 import type { ToolInputRefinement } from './tool-input-refinement';
 import type { ToolOrder } from './tool-order';
 import type { TypedToolResult } from './tool-result';
@@ -220,6 +221,7 @@ export async function streamLanguageModelCall<
   callId,
   toolsContext,
   experimental_sandbox: sandbox,
+  toolApprovalSecret,
   _internal: {
     generateId = originalGenerateId,
     generateCallId = originalGenerateCallId,
@@ -253,6 +255,11 @@ export async function streamLanguageModelCall<
    * Sandbox session passed through for resolving tool descriptions that depend on it.
    */
   experimental_sandbox?: SandboxSession;
+  /**
+   * Secret used to sign provider-emitted tool approval requests so that their
+   * approval responses can be verified when they are replayed.
+   */
+  toolApprovalSecret?: string | Uint8Array;
   _internal?: {
     generateId?: IdGenerator;
     generateCallId?: IdGenerator;
@@ -382,6 +389,7 @@ export async function streamLanguageModelCall<
       now,
       callStartTimestampMs,
       onLanguageModelCallEnd,
+      toolApprovalSecret,
     }),
   );
 
@@ -410,6 +418,7 @@ function createLanguageModelV4StreamPartToLanguageModelStreamPartTransform<
   now,
   callStartTimestampMs,
   onLanguageModelCallEnd,
+  toolApprovalSecret,
 }: {
   tools: TOOLS | undefined;
   instructions: Instructions | undefined;
@@ -425,6 +434,7 @@ function createLanguageModelV4StreamPartToLanguageModelStreamPartTransform<
   now: () => number;
   callStartTimestampMs: number;
   onLanguageModelCallEnd?: Arrayable<OnLanguageModelCallEndCallback<TOOLS>>;
+  toolApprovalSecret: string | Uint8Array | undefined;
 }) {
   // keep track of parsed tool calls so provider-emitted approval requests can reference them
   // keep track of tool inputs for provider-side tool results
@@ -738,10 +748,19 @@ function createLanguageModelV4StreamPartToLanguageModelStreamPartTransform<
             break;
           }
 
+          const signature = await maybeSignApproval({
+            secret: toolApprovalSecret,
+            approvalId: chunk.approvalId,
+            toolCallId: toolCall.toolCallId,
+            toolName: toolCall.toolName,
+            input: toolCall.input,
+          });
+
           const toolApprovalRequest = {
             type: 'tool-approval-request',
             approvalId: chunk.approvalId,
             toolCall,
+            ...(signature != null ? { signature } : {}),
           } as const;
 
           controller.enqueue(toolApprovalRequest);

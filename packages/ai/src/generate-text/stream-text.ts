@@ -163,7 +163,10 @@ import type { ToolOrder } from './tool-order';
 import type { ToolOutput } from './tool-output';
 import type { StaticToolOutputDenied } from './tool-output-denied';
 import type { ToolsContextParameter } from './tools-context-parameter';
-import { validateApprovedToolApprovals } from './validate-tool-approvals';
+import {
+  validateApprovedToolApprovals,
+  validateProviderExecutedToolApprovals,
+} from './validate-tool-approvals';
 
 const originalGenerateId = createIdGenerator({
   prefix: 'aitxt',
@@ -2024,7 +2027,17 @@ class DefaultStreamTextResult<
         callbacks: [onStart, telemetryDispatcher.onStart],
       });
 
-      const initialMessages = initialPrompt.messages;
+      const initialMessages = await validateProviderExecutedToolApprovals<
+        TOOLS,
+        RUNTIME_CONTEXT
+      >({
+        messages: initialPrompt.messages,
+        tools,
+        toolApproval,
+        toolsContext,
+        runtimeContext,
+        toolApprovalSecret: experimental_toolApprovalSecret,
+      });
       let instructionsForNextStep = initialPrompt.instructions;
 
       const { approvedToolApprovals, deniedToolApprovals } =
@@ -2432,6 +2445,7 @@ class DefaultStreamTextResult<
                     telemetryDispatcher.executeLanguageModelCall,
                   toolsContext,
                   experimental_sandbox: stepSandbox,
+                  toolApprovalSecret: experimental_toolApprovalSecret,
                   onLanguageModelCallStart: filterNullable(
                     onLanguageModelCallStart,
                     telemetryDispatcher.onLanguageModelCallStart as
