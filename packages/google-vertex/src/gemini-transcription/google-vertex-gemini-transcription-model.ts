@@ -26,6 +26,7 @@ import {
   type WebSocketLike,
 } from '@ai-sdk/provider-utils';
 import { z } from 'zod/v4';
+import { getVertexModelPathSegment } from '../get-vertex-model-path-segment';
 import { googleVertexFailedResponseHandler } from '../google-vertex-error';
 import {
   googleVertexGeminiTranscriptionModelOptions,
@@ -164,6 +165,7 @@ export class GoogleVertexGeminiTranscriptionModel implements TranscriptionModelV
       });
     }
 
+    const modelPathSegment = getVertexModelPathSegment(this.modelId);
     const currentDate = this.config._internal?.currentDate?.() ?? new Date();
     const warnings: SharedV4Warning[] = [];
     const googleOptions = await this.parseOptions(options.providerOptions);
@@ -194,7 +196,7 @@ export class GoogleVertexGeminiTranscriptionModel implements TranscriptionModelV
       responseHeaders,
       rawValue: rawResponse,
     } = await postJsonToApi({
-      url: `${this.config.baseURL}/models/${this.modelId}:generateContent`,
+      url: `${this.config.baseURL}/models/${modelPathSegment}:generateContent`,
       headers: combineHeaders(
         this.config.headers ? await resolve(this.config.headers) : undefined,
         options.headers,
