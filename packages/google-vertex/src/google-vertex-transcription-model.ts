@@ -14,6 +14,7 @@ import {
 } from '@ai-sdk/provider-utils';
 import { z } from 'zod/v4';
 import { googleVertexFailedResponseHandler } from './google-vertex-error';
+import { validateGoogleVertexLocation } from './google-vertex-host';
 import {
   googleVertexTranscriptionProviderOptionsSchema,
   type GoogleVertexTranscriptionModelId,
@@ -105,7 +106,10 @@ export class GoogleVertexTranscriptionModel implements TranscriptionModelV4 {
       }
     }
 
-    const region = googleOptions?.region ?? this.config.location;
+    const region = validateGoogleVertexLocation(
+      googleOptions?.region ?? this.config.location,
+      'region',
+    );
     const languageCodes = googleOptions?.languageCodes ?? ['auto'];
 
     // The recognize API takes base64-encoded audio in the `content` field. A

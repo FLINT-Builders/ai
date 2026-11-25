@@ -28,6 +28,7 @@ import {
 } from '@ai-sdk/provider-utils';
 import { VERSION } from './version';
 import type { GoogleVertexConfig } from './google-vertex-config';
+import { getGoogleVertexAIPlatformHost } from './google-vertex-host';
 import { GoogleVertexEmbeddingModel } from './google-vertex-embedding-model';
 import type { GoogleVertexEmbeddingModelId } from './google-vertex-embedding-model-options';
 import { GoogleVertexImageModel } from './google-vertex-image-model';
@@ -245,19 +246,9 @@ export function createGoogleVertex(
     const region = loadGoogleVertexLocation();
     const project = loadGoogleVertexProject();
 
-    const getHost = () => {
-      if (region === 'global') {
-        return 'aiplatform.googleapis.com';
-      } else if (region === 'eu' || region === 'us') {
-        return `aiplatform.${region}.rep.googleapis.com`;
-      } else {
-        return `${region}-aiplatform.googleapis.com`;
-      }
-    };
-
     return (
       withoutTrailingSlash(options.baseURL) ??
-      `https://${getHost()}/v1beta1/projects/${project}/locations/${region}${
+      `https://${getGoogleVertexAIPlatformHost(region)}/v1beta1/projects/${project}/locations/${region}${
         endpoint ? '' : '/publishers/google'
       }`
     );
