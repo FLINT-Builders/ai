@@ -28,6 +28,24 @@ import { z } from 'zod/v4';
 const DEFAULT_POLL_INTERVAL_MILLIS = 500;
 const DEFAULT_MAX_POLL_ATTEMPTS = 60000 / DEFAULT_POLL_INTERVAL_MILLIS;
 
+// Generation request fields that are derived from the call settings (model id,
+// prompt, aspect ratio, input images). Provider options must not set them, so
+// that they cannot replace or inject values the application did not choose.
+// Includes the `*_ref` names that the Luma API uses for reference images.
+const RESERVED_REQUEST_KEYS = new Set([
+  'model',
+  'prompt',
+  'aspect_ratio',
+  'image',
+  'style',
+  'character',
+  'modify_image',
+  'image_ref',
+  'style_ref',
+  'character_ref',
+  'modify_image_ref',
+]);
+
 interface LumaImageModelConfig {
   provider: string;
   baseURL: string;
@@ -112,8 +130,22 @@ export class LumaImageModel implements ImageModelV4 {
       maxPollAttempts,
       referenceType,
       images: imageConfigs,
-      ...providerRequestOptions
+      ...passthroughOptions
     } = lumaOptions ?? {};
+
+    const providerRequestOptions: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(passthroughOptions)) {
+      if (RESERVED_REQUEST_KEYS.has(key)) {
+        warnings.push({
+          type: 'unsupported',
+          feature: `providerOptions.luma.${key}`,
+          details:
+            'This request field is set by the model and cannot be overridden through provider options.',
+        });
+        continue;
+      }
+      providerRequestOptions[key] = value;
+    }
 
     // Handle image editing via files with reference type support
     const editingOptions = this.getEditingOptions(
@@ -129,11 +161,11 @@ export class LumaImageModel implements ImageModelV4 {
       url: this.getLumaGenerationsUrl(),
       headers: fullHeaders,
       body: {
+        ...providerRequestOptions,
         prompt,
         ...(aspectRatio ? { aspect_ratio: aspectRatio } : {}),
         model: this.modelId,
         ...editingOptions,
-        ...providerRequestOptions,
       },
       abortSignal,
       fetch: this.config.fetch,
