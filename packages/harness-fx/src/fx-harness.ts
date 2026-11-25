@@ -25,6 +25,53 @@ import {
 const FX_CLIENT_APP = `ai-sdk/harness-fx/${VERSION}`;
 const DEFAULT_AI_GATEWAY_BASE_URL = 'https://ai-gateway.vercel.sh';
 
+const FX_RELEASE_VERSION = 'v0.0.18';
+const FX_RELEASE_SHA256 = {
+  'linux-x86_64':
+    'e4912040c1fb2a1cda4162fd8f40fc66aa80a1a0a306af6332b5426bdcac99b6',
+  'linux-aarch64':
+    '432a343b7d0fb15dce454ab1e100401df1ee4f01fb1e689a64557e6b9a57ece5',
+  'macos-x86_64':
+    'becc6f68d42ff20606cd783b72630287ab92bc6eef2d700ed39de17d52b7dd3e',
+  'macos-aarch64':
+    'f37eea7eaf248f7a75765fc3f71be77bcfbc43eaef5cbe76d721dadb97479cfe',
+} as const;
+
+/*
+ * Installs a pinned fx release archive and verifies its SHA-256 digest before
+ * extracting it. The archive is never executed or unpacked unless the digest
+ * matches, so the bytes served by the release host cannot run in the sandbox.
+ */
+const FX_INSTALL_COMMAND = `case "$(uname -s)-$(uname -m)" in
+  Linux-x86_64|Linux-amd64) fx_platform=linux-x86_64; fx_sha256=${FX_RELEASE_SHA256['linux-x86_64']} ;;
+  Linux-aarch64|Linux-arm64) fx_platform=linux-aarch64; fx_sha256=${FX_RELEASE_SHA256['linux-aarch64']} ;;
+  Darwin-x86_64) fx_platform=macos-x86_64; fx_sha256=${FX_RELEASE_SHA256['macos-x86_64']} ;;
+  Darwin-arm64|Darwin-aarch64) fx_platform=macos-aarch64; fx_sha256=${FX_RELEASE_SHA256['macos-aarch64']} ;;
+  *) echo "fx: unsupported platform $(uname -s) $(uname -m)" >&2; exit 1 ;;
+esac
+fx_download_dir="$(mktemp -d "$PWD/.fx-download.XXXXXX")"
+trap 'rm -rf "$fx_download_dir"' EXIT
+fx_archive="$fx_download_dir/fx.tar.gz"
+fx_url="https://releases.fx.sh/${FX_RELEASE_VERSION}/fx-$fx_platform.tar.gz"
+if command -v curl >/dev/null 2>&1; then
+  curl -fsSL "$fx_url" -o "$fx_archive"
+else
+  wget -qO "$fx_archive" "$fx_url"
+fi
+if command -v sha256sum >/dev/null 2>&1; then
+  fx_actual_sha256="$(sha256sum "$fx_archive" | cut -d ' ' -f 1)"
+else
+  fx_actual_sha256="$(shasum -a 256 "$fx_archive" | cut -d ' ' -f 1)"
+fi
+if [ "$fx_actual_sha256" != "$fx_sha256" ]; then
+  echo "fx: SHA-256 mismatch for $fx_url" >&2
+  exit 1
+fi
+tar -xzf "$fx_archive" -C "$fx_download_dir" fx
+mkdir -p "$HOME/.local/bin"
+mv -f "$fx_download_dir/fx" "$HOME/.local/bin/fx"
+chmod +x "$HOME/.local/bin/fx"`;
+
 export type FxAuthenticationMode = ACPAuthenticationMode;
 
 function sanitizeFxMcpToolNameSegment(value: string): string {
@@ -594,7 +641,7 @@ export function createFx(
     },
     source: {
       type: 'install-command',
-      command: 'curl -fsSL https://fx.sh/setup.sh | bash',
+      command: FX_INSTALL_COMMAND,
     },
     executable: 'fx',
     args: ['acp'],

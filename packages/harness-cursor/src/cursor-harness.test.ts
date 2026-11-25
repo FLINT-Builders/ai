@@ -80,7 +80,39 @@ describe('createCursor', () => {
         "harnessId": "cursor",
         "providerAuthentication": undefined,
         "source": {
-          "command": "curl https://cursor.com/install -fsS | bash",
+          "command": "case "$(uname -s)-$(uname -m)" in
+        Linux-x86_64|Linux-amd64) cursor_platform=linux/x64; cursor_sha256=7663b1c5d1b56e095ef8e23bef38d66df6cfd665c4873470214e0e411f0f97b3 ;;
+        Linux-aarch64|Linux-arm64) cursor_platform=linux/arm64; cursor_sha256=7b7dd0020fb9a2a9e1e7e3f39e2f9f512d1dd9577174ecda8aa82ac31dbc9565 ;;
+        Darwin-x86_64) cursor_platform=darwin/x64; cursor_sha256=16cc7314128243b24d74575cae5f7e1a215656d48115d55084e2d6725ef7c542 ;;
+        Darwin-arm64|Darwin-aarch64) cursor_platform=darwin/arm64; cursor_sha256=92f39e448218897538bd801cdb01d69106ab37a86aaf3dc0e6b55159c79b75e2 ;;
+        *) echo "cursor: unsupported platform $(uname -s) $(uname -m)" >&2; exit 1 ;;
+      esac
+      cursor_download_dir="$(mktemp -d "$PWD/.cursor-agent-download.XXXXXX")"
+      trap 'rm -rf "$cursor_download_dir"' EXIT
+      cursor_archive="$cursor_download_dir/agent-cli-package.tar.gz"
+      cursor_url="https://downloads.cursor.com/lab/2026.11.22-e9042b2/$cursor_platform/agent-cli-package.tar.gz"
+      if command -v curl >/dev/null 2>&1; then
+        curl -fsSL "$cursor_url" -o "$cursor_archive"
+      else
+        wget -qO "$cursor_archive" "$cursor_url"
+      fi
+      if command -v sha256sum >/dev/null 2>&1; then
+        cursor_actual_sha256="$(sha256sum "$cursor_archive" | cut -d ' ' -f 1)"
+      else
+        cursor_actual_sha256="$(shasum -a 256 "$cursor_archive" | cut -d ' ' -f 1)"
+      fi
+      if [ "$cursor_actual_sha256" != "$cursor_sha256" ]; then
+        echo "cursor: SHA-256 mismatch for $cursor_url" >&2
+        exit 1
+      fi
+      mkdir "$cursor_download_dir/package"
+      tar --strip-components=1 -xzf "$cursor_archive" -C "$cursor_download_dir/package"
+      cursor_version_dir="$HOME/.local/share/cursor-agent/versions/2026.11.22-e9042b2"
+      mkdir -p "$(dirname "$cursor_version_dir")" "$HOME/.local/bin"
+      rm -rf "$cursor_version_dir"
+      mv "$cursor_download_dir/package" "$cursor_version_dir"
+      ln -sfn "$cursor_version_dir/cursor-agent" "$HOME/.local/bin/agent"
+      ln -sfn "$cursor_version_dir/cursor-agent" "$HOME/.local/bin/cursor-agent"",
           "type": "install-command",
         },
         "version": "v1",
