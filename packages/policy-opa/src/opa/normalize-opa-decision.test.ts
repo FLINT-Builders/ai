@@ -70,13 +70,13 @@ describe('normalizeOpaDecision', () => {
   });
 
   describe('fallthrough', () => {
-    it('treats null as not-applicable', () => {
-      expect(normalizeOpaDecision(null)).toEqual({ type: 'not-applicable' });
-    });
-
-    it('treats undefined as not-applicable', () => {
-      expect(normalizeOpaDecision(undefined)).toEqual({
-        type: 'not-applicable',
+    it.each([
+      ['null', null],
+      ['undefined', undefined],
+    ])('denies a missing decision (%s)', (_description, result) => {
+      expect(normalizeOpaDecision(result)).toEqual({
+        type: 'denied',
+        reason: 'no matching OPA policy decision',
       });
     });
 
