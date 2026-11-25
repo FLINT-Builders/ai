@@ -16,12 +16,12 @@ export type GoogleVideoModelOptions = {
     gcsUri?: string;
   }> | null;
 
-  [key: string]: unknown; // For passthrough
+  [key: string]: unknown;
 };
 
 export const googleVideoModelOptionsSchema = lazySchema(() =>
   zodSchema(
-    z.looseObject({
+    z.object({
       pollIntervalMs: z.number().positive().nullish(),
       pollTimeoutMs: z.number().positive().nullish(),
       personGeneration: z

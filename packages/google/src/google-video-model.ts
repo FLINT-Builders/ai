@@ -245,20 +245,6 @@ export class GoogleVideoModel implements VideoModelV4 {
       if (opts.negativePrompt !== undefined && opts.negativePrompt !== null) {
         parameters.negativePrompt = opts.negativePrompt;
       }
-
-      for (const [key, value] of Object.entries(opts)) {
-        if (
-          ![
-            'pollIntervalMs',
-            'pollTimeoutMs',
-            'personGeneration',
-            'negativePrompt',
-            'referenceImages',
-          ].includes(key)
-        ) {
-          parameters[key] = value;
-        }
-      }
     }
 
     return { instances, parameters, warnings, googleOptions };

@@ -230,22 +230,6 @@ export class GoogleVertexVideoModel implements VideoModelV4 {
       ) {
         parameters.gcsOutputDirectory = opts.gcsOutputDirectory;
       }
-
-      for (const [key, value] of Object.entries(opts)) {
-        if (
-          ![
-            'pollIntervalMs',
-            'pollTimeoutMs',
-            'personGeneration',
-            'negativePrompt',
-            'generateAudio',
-            'gcsOutputDirectory',
-            'referenceImages',
-          ].includes(key)
-        ) {
-          parameters[key] = value;
-        }
-      }
     }
 
     return { instances, parameters, warnings, googleVertexOptions };
