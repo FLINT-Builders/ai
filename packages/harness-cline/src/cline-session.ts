@@ -409,6 +409,19 @@ export async function createClineSession(
   }): void {
     unsubscribe?.();
     unsubscribe = undefined;
+    /*
+     * MCP tools execute in this host process with its network and
+     * credentials, so they need approval in every mode except `allow-all`.
+     * Host tools are registered after them and win on a name collision.
+     */
+    const hostToolNames = new Set(
+      rebuildInput.userTools.map(tool => tool.name),
+    );
+    const gatedMcpToolNames = new Set(
+      permissionMode === 'allow-all'
+        ? []
+        : [...mcpRuntime.toolNames].filter(name => !hostToolNames.has(name)),
+    );
     agent = new Agent({
       model: agentModel.model,
       ...(activeModelId
@@ -483,21 +496,26 @@ export async function createClineSession(
         },
       },
       // Built-in tools whose kind requires approval under the session's
-      // permission mode are marked `autoApprove: false`; the runtime then
-      // routes them through `requestToolApproval` below. User tools are
-      // approved by the harness framework, never by the adapter.
+      // permission mode, and gated MCP tools, are marked `autoApprove: false`;
+      // the runtime then routes them through `requestToolApproval` below.
+      // User tools are approved by the harness framework, never by the
+      // adapter.
       toolPolicies: Object.fromEntries(
-        activeBuiltinNames
-          .filter(name =>
+        [
+          ...activeBuiltinNames.filter(name =>
             clineBuiltinToolRequiresApproval({
               permissionMode,
               kind: CLINE_NATIVE_TOOL_KINDS[name],
             }),
-          )
-          .map(name => [name, { autoApprove: false }]),
+          ),
+          ...gatedMcpToolNames,
+        ].map(name => [name, { autoApprove: false }]),
       ),
       requestToolApproval: request => {
-        if (!isClineBuiltinToolName(request.toolName)) {
+        if (
+          !isClineBuiltinToolName(request.toolName) &&
+          !gatedMcpToolNames.has(request.toolName)
+        ) {
           // Custom host-executed tool approvals are handled by the framework
           // before results are submitted back; the adapter never gates them.
           return { approved: true };

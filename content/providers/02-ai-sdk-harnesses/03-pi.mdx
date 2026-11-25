@@ -85,7 +85,8 @@ Settings:
   `ai-gateway`) or an isolated authentication environment.
 - `extensionFactories`: trusted inline Pi extension factories that run in the
   host Node.js process.
-- `mcpServers`: MCP server definitions keyed by server name.
+- `mcpServers`: MCP server definitions keyed by server name. MCP servers run
+  in the host Node.js process, outside the sandbox.
 - `providers`: explicit Pi provider configurations for custom models.
 - `thinkingLevel`: Pi thinking level (`off`, `minimal`, `low`, `medium`,
   `high`, `xhigh`, or `max`).
@@ -215,6 +216,10 @@ common tool shape.
 
 Pi supports built-in tool approval requests when `permissionMode` is
 `allow-reads` or `allow-edits`.
+
+Tools from `mcpServers` and `extensionFactories` run in the host Node.js
+process, outside the sandbox. Every call to one of them requires approval
+unless `permissionMode` is `allow-all`.
 
 ## Known Limitations
 
