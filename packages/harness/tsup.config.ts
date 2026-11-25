@@ -2,19 +2,13 @@ import { defineConfig } from 'tsup';
 
 export default defineConfig([
   {
-    entry: { index: 'src/index.ts' },
-    format: ['esm'],
-    dts: true,
-    sourcemap: true,
-  },
-  {
-    entry: { 'agent/index': 'agent/index.ts' },
-    format: ['esm'],
-    dts: true,
-    sourcemap: true,
-  },
-  {
-    entry: { 'utils/index': 'utils/index.ts' },
+    // Built together so shared modules (error classes in particular) land in
+    // common chunks and keep a single identity across these entry points.
+    entry: {
+      index: 'src/index.ts',
+      'agent/index': 'agent/index.ts',
+      'utils/index': 'utils/index.ts',
+    },
     format: ['esm'],
     dts: true,
     sourcemap: true,
