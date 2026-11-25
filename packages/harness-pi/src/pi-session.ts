@@ -13,6 +13,7 @@ import {
   type ToolDefinition,
 } from '@earendil-works/pi-coding-agent';
 import { randomUUID } from 'node:crypto';
+import { existsSync, realpathSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -124,6 +125,33 @@ function isWithinWorkspace(
     isWithinDirectory(sessionWorkDir, candidate) ||
     isWithinDirectory(hostWorkDir, candidate)
   );
+}
+
+function realPathOrUndefined(candidate: string): string | undefined {
+  try {
+    return realpathSync(candidate);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Whether a discovered resource path still lies inside the session workspace
+ * once symlinks are followed. Pi reads workspace resources through the
+ * filesystem, so a workspace path that links elsewhere would otherwise load an
+ * outside file as project instructions or skills.
+ */
+function resolvesWithinWorkspace(
+  candidate: string,
+  sessionWorkDir: string,
+  hostWorkDir: string,
+): boolean {
+  const realCandidate = realPathOrUndefined(candidate);
+  if (realCandidate == null) return false;
+  return [sessionWorkDir, hostWorkDir].some(root => {
+    const realRoot = realPathOrUndefined(root);
+    return realRoot != null && isWithinDirectory(realRoot, realCandidate);
+  });
 }
 
 function createHarnessPiSkills({
@@ -549,12 +577,41 @@ export async function createPiSession(
     skillsOverride: base => ({
       ...base,
       skills: [
-        ...base.skills.filter(skill =>
-          isWithinWorkspace(skill.filePath, sessionWorkDir, hostWorkDir),
+        ...base.skills.filter(
+          skill =>
+            isWithinWorkspace(skill.filePath, sessionWorkDir, hostWorkDir) &&
+            resolvesWithinWorkspace(
+              skill.filePath,
+              sessionWorkDir,
+              hostWorkDir,
+            ),
         ),
         ...harnessSkills,
       ],
     }),
+    agentsFilesOverride: base => ({
+      ...base,
+      agentsFiles: base.agentsFiles.filter(
+        file =>
+          !isWithinWorkspace(file.path, sessionWorkDir, hostWorkDir) ||
+          resolvesWithinWorkspace(file.path, sessionWorkDir, hostWorkDir),
+      ),
+    }),
+    systemPromptOverride: base => {
+      const projectSystemPromptPath = path.join(
+        sessionWorkDir,
+        '.pi',
+        'SYSTEM.md',
+      );
+      return existsSync(projectSystemPromptPath) &&
+        !resolvesWithinWorkspace(
+          projectSystemPromptPath,
+          sessionWorkDir,
+          hostWorkDir,
+        )
+        ? undefined
+        : base;
+    },
   });
   await resourceLoader.reload();
 

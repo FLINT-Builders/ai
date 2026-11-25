@@ -57,6 +57,7 @@ function makeSandbox(
   options?: {
     rejectFindSymlinkFlags?: boolean;
     withoutTar?: boolean;
+    withoutTransfer?: boolean;
   },
 ): {
   sandbox: Experimental_SandboxSession;
@@ -64,36 +65,81 @@ function makeSandbox(
   readBinaryFile: ReturnType<typeof vi.fn>;
 } {
   const listOutput = [
-    ...remoteListing.directories.map(d => `d\t${d}`),
-    ...Object.keys(remoteListing.files).map(
-      f => `f\t${f}\t${path.posix.join(sandboxWorkDir, f)}`,
-    ),
-  ]
-    .sort()
-    .join('\n');
+    `r\t${sandboxWorkDir}`,
+    ...[
+      ...remoteListing.directories.map(d => `d\t${d}`),
+      ...Object.keys(remoteListing.files).map(
+        f => `f\t${f}\t${path.posix.join(sandboxWorkDir, f)}`,
+      ),
+    ].sort(),
+  ].join('\n');
 
-  // Mirror the sandbox-side archive: gzipped tar of the requested members,
-  // base64-encoded on stdout.
+  const unquote = (quoted: string) => quoted.split("'\\''").join("'");
+
+  // Mirror the sandbox-side archive: for each directory group, an `@<index>`
+  // line followed by the base64 of a gzipped tar of its requested members.
   function archiveOutput(command: string): string {
-    const members = [...command.matchAll(/'([^']*)'/g)]
-      .map(match => (match[1] as string).split("'\\''").join("'"))
-      .filter(member => member.startsWith(sandboxWorkDir.slice(1)));
-    const entries = members.flatMap<[string, string]>(member => {
+    const output: string[] = [];
+    let directory: string | undefined;
+    for (const line of command.split('\n')) {
+      const cd = /^\s*if cd -- '(.*?)' 2>\/dev\/null/.exec(line);
+      if (cd) directory = unquote(cd[1] as string);
+      const header = /printf '@%s\\n' (\d+)/.exec(line);
+      if (header) output.push(`@${header[1]}`);
+      const names = /for pi_archive_name in (.+); do/.exec(line);
+      if (names && directory != null) {
+        const groupDirectory = directory;
+        const entries = [...(names[1] as string).matchAll(/'([^']*)'/g)]
+          .map(match => unquote(match[1] as string))
+          .flatMap<[string, string]>(name => {
+            const relative = path.posix.relative(
+              sandboxWorkDir,
+              path.posix.join(groupDirectory, name),
+            );
+            const content = remoteListing.files[relative];
+            return content == null ? [] : [[name, content]];
+          });
+        output.push(gzipSync(makeTarArchive(entries)).toString('base64'));
+      }
+    }
+    return output.join('\n');
+  }
+
+  // Mirror the descriptor fallback: a `#<index>` line followed by the base64
+  // of each requested file.
+  function descriptorOutput(command: string): string {
+    const output: string[] = [];
+    for (const line of command.split('\n')) {
+      const file =
+        /^\s*if \[ -f '(.*?)' \]; then .*printf '#%s\\n' (\d+);/.exec(line);
+      if (!file) continue;
       const relative = path.posix.relative(
-        sandboxWorkDir.slice(1),
-        member,
-      ) as string;
+        sandboxWorkDir,
+        unquote(file[1] as string),
+      );
       const content = remoteListing.files[relative];
-      return content == null ? [] : [[member, content]];
-    });
-    return gzipSync(makeTarArchive(entries)).toString('base64');
+      if (content == null) continue;
+      output.push(`#${file[2]}`, Buffer.from(content).toString('base64'));
+    }
+    return output.join('\n');
   }
 
   const run = vi.fn(async ({ command }: { command: string }) => {
-    if (command.startsWith('tar ')) {
-      return options?.withoutTar
-        ? { exitCode: 127, stdout: '', stderr: 'tar: not found\n' }
-        : { exitCode: 0, stdout: archiveOutput(command), stderr: '' };
+    if (command.includes('command -v tar')) {
+      if (options?.withoutTransfer) {
+        return {
+          exitCode: 0,
+          stdout: '__PI_TRANSFER_UNAVAILABLE__\n',
+          stderr: '',
+        };
+      }
+      return {
+        exitCode: 0,
+        stdout: options?.withoutTar
+          ? descriptorOutput(command)
+          : archiveOutput(command),
+        stderr: '',
+      };
     }
     return options?.rejectFindSymlinkFlags && command.includes('find -L')
       ? {
@@ -563,11 +609,11 @@ describe('syncHostWorkspaceFromSandbox', () => {
     );
   });
 
-  it('falls back to per-file reads when the sandbox cannot archive', async () => {
-    const { sandbox, readBinaryFile } = makeSandbox(
+  it('streams files from descriptors in one command when the sandbox cannot archive', async () => {
+    const { sandbox, run, readBinaryFile } = makeSandbox(
       {
         directories: ['.pi'],
-        files: { '.pi/SYSTEM.md': '# Prompt' },
+        files: { '.pi/SYSTEM.md': '# Prompt', 'AGENTS.md': '# Agents' },
       },
       { withoutTar: true },
     );
@@ -578,24 +624,26 @@ describe('syncHostWorkspaceFromSandbox', () => {
       hostWorkDir,
     });
 
-    expect(readBinaryFile).toHaveBeenCalledTimes(1);
+    expect(readBinaryFile).not.toHaveBeenCalled();
+    expect(run).toHaveBeenCalledTimes(2);
     expect(readFileSync(path.join(hostWorkDir, '.pi/SYSTEM.md'), 'utf8')).toBe(
       '# Prompt',
     );
+    expect(readFileSync(path.join(hostWorkDir, 'AGENTS.md'), 'utf8')).toBe(
+      '# Agents',
+    );
   });
 
-  it('throws when a file disappears and neither transfer path can read it', async () => {
-    const { sandbox } = makeSandbox(
-      { directories: [], files: { 'AGENTS.md': '# Gone' } },
-      { withoutTar: true },
+  it('throws when the sandbox cannot transfer files without following symlinks', async () => {
+    const { sandbox, readBinaryFile } = makeSandbox(
+      { directories: [], files: { 'AGENTS.md': '# Agents' } },
+      { withoutTransfer: true },
     );
-    (
-      sandbox.readBinaryFile as unknown as ReturnType<typeof vi.fn>
-    ).mockResolvedValue(null);
 
     await expect(
       syncHostWorkspaceFromSandbox({ sandbox, sandboxWorkDir, hostWorkDir }),
-    ).rejects.toThrow('disappeared during mirror sync');
+    ).rejects.toThrow('without following symlinks');
+    expect(readBinaryFile).not.toHaveBeenCalled();
   });
 
   it('transfers a real skills tree as one archive in just-bash', async () => {
