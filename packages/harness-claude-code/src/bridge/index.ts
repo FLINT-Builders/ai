@@ -88,14 +88,19 @@ const NATIVE_TO_COMMON: Readonly<Record<string, CommonBuiltinToolName>> = {
   AskUserQuestion: 'askUserQuestions',
 };
 
-const NATIVE_TOOL_KINDS: Readonly<
-  Record<string, 'readonly' | 'edit' | 'bash'>
-> = {
+/*
+ * `network` tools send model-chosen input (URLs, queries) off the sandbox, so
+ * they can exfiltrate anything the agent has read. They are never treated as
+ * reads: every mode except `allow-all` gates them behind host approval.
+ */
+type NativeToolKind = 'readonly' | 'network' | 'edit' | 'bash';
+
+const NATIVE_TOOL_KINDS: Readonly<Record<string, NativeToolKind>> = {
   Read: 'readonly',
   Glob: 'readonly',
   Grep: 'readonly',
-  WebSearch: 'readonly',
-  WebFetch: 'readonly',
+  WebSearch: 'network',
+  WebFetch: 'network',
   TaskGet: 'readonly',
   TaskList: 'readonly',
   TaskOutput: 'readonly',
@@ -314,11 +319,7 @@ function createPermissionSettings(input: {
   for (const [nativeName, kind] of Object.entries(NATIVE_TOOL_KINDS)) {
     if (
       input.inactiveNativeTools.has(nativeName) ||
-      (input.permissionMode === 'allow-reads'
-        ? kind === 'edit' || kind === 'bash'
-        : input.permissionMode === 'allow-edits'
-          ? kind === 'bash'
-          : false)
+      kindRequiresApproval({ kind, permissionMode: input.permissionMode })
     ) {
       askRules.add(`${nativeName}(*)`);
     }
@@ -336,10 +337,19 @@ function nativeToolRequiresApproval(input: {
   nativeName: string;
   permissionMode: 'allow-reads' | 'allow-edits' | 'allow-all';
 }): boolean {
+  return kindRequiresApproval({
+    kind: NATIVE_TOOL_KINDS[input.nativeName] ?? 'edit',
+    permissionMode: input.permissionMode,
+  });
+}
+
+function kindRequiresApproval(input: {
+  kind: NativeToolKind;
+  permissionMode: 'allow-reads' | 'allow-edits' | 'allow-all';
+}): boolean {
   if (input.permissionMode === 'allow-all') return false;
-  const kind = NATIVE_TOOL_KINDS[input.nativeName] ?? 'edit';
-  if (input.permissionMode === 'allow-edits') return kind === 'bash';
-  return kind === 'edit' || kind === 'bash';
+  if (input.kind === 'network' || input.kind === 'bash') return true;
+  return input.permissionMode === 'allow-reads' && input.kind === 'edit';
 }
 
 async function runTurn(start: StartMessage, turn: BridgeTurn): Promise<void> {
