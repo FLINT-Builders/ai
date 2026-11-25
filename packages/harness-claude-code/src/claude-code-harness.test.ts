@@ -548,6 +548,55 @@ describe('createClaudeCode adapter', () => {
     await directSession.doDestroy();
   });
 
+  it('applies brokered custom headers outside the sandbox', async () => {
+    const spawnEnvs: Array<Record<string, string | undefined>> = [];
+    const addRequestTransformations = vi.fn(async () => {});
+    const sandboxSession = fakeNetworkSandboxSessionForStartupSuccess({
+      bridgePortUrl: 'ws://127.0.0.1:1',
+      spawnEnvs,
+      writes: [],
+      runs: [],
+    });
+    Object.assign(sandboxSession, { addRequestTransformations });
+    const session = await createClaudeCode({
+      auth: { ANTHROPIC_API_KEY: 'anthropic-secret' },
+      credentialForwarding: async options =>
+        `ephemeral-${options.environmentVariableName}`,
+    }).doStart({
+      sessionId: 'brokered-headers',
+      headers: { 'x-tenant': 'acme' },
+      sandboxSession,
+      sessionWorkDir: '/vercel/sandbox/claude-code-brokered-headers',
+    });
+    await session.doPromptTurn({
+      skills: [],
+      tools: [],
+      prompt: 'Hello',
+      emit: () => {},
+    });
+
+    expect(addRequestTransformations).toHaveBeenCalledWith([
+      {
+        match: {
+          host: 'api.anthropic.com',
+          headers: [
+            {
+              key: { exact: 'x-api-key' },
+              value: { exact: 'ephemeral-ANTHROPIC_API_KEY' },
+            },
+          ],
+        },
+        transform: {
+          headers: { 'x-api-key': 'anthropic-secret', 'x-tenant': 'acme' },
+        },
+      },
+    ]);
+    const start = sentMessages.at(-1) as { env?: Record<string, string> };
+    expect(start.env).not.toHaveProperty('ANTHROPIC_CUSTOM_HEADERS');
+    expect(JSON.stringify(spawnEnvs)).not.toContain('acme');
+    await session.doDestroy();
+  });
+
   it('brokers credentials when the sandbox supports additive request transformations', async () => {
     const spawnEnvs: Array<Record<string, string | undefined>> = [];
     const forwardedCredentials: Array<{

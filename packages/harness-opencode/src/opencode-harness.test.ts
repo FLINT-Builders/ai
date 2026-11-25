@@ -477,6 +477,96 @@ describe('createOpenCode adapter', () => {
     await session.doDetach();
   });
 
+  it('applies brokered headers outside the sandbox', async () => {
+    harnessUtilsMocks.waitForBridgeReady.mockResolvedValueOnce({ port: 4000 });
+    const addRequestTransformations = vi.fn(async () => {});
+    const emptyStream = () =>
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.close();
+        },
+      });
+    const sandbox = {
+      async run({ command }: { command: string }) {
+        return command === 'printf "%s" "$HOME"'
+          ? { exitCode: 0, stdout: '/home/vercel-sandbox', stderr: '' }
+          : { exitCode: 0, stdout: '', stderr: '' };
+      },
+      async readTextFile() {
+        return null;
+      },
+      async writeTextFile() {},
+      async spawn() {
+        return {
+          stdout: emptyStream(),
+          stderr: emptyStream(),
+          async wait() {},
+          async kill() {},
+        };
+      },
+    };
+    const sandboxSession = {
+      id: 'test-sandbox',
+      defaultWorkingDirectory: '/workspace',
+      restricted: () => sandbox,
+      ports: [4000] as ReadonlyArray<number>,
+      addRequestTransformations,
+      async getPortEndpoint() {
+        return { url: 'ws://sandbox.example' };
+      },
+      async getPortUrl() {
+        return 'ws://sandbox.example';
+      },
+      async stop() {},
+    } as unknown as HarnessV1NetworkSandboxSession;
+    const session = await createOpenCode({
+      provider: 'openai',
+      auth: { OPENAI_API_KEY: 'openai-secret' },
+      credentialForwarding: async options =>
+        `ephemeral-${options.environmentVariableName}`,
+    }).doStart({
+      sessionId: 's1',
+      headers: { 'x-tenant': 'acme' },
+      sandboxSession,
+      sessionWorkDir: '/workspace/project',
+    });
+
+    expect(addRequestTransformations).toHaveBeenCalledWith([
+      {
+        match: {
+          host: 'api.openai.com',
+          path: { startsWith: '/v1' },
+          headers: [
+            {
+              key: { exact: 'Authorization' },
+              value: { exact: 'Bearer ephemeral-OPENAI_API_KEY' },
+            },
+          ],
+        },
+        transform: {
+          headers: {
+            Authorization: 'Bearer openai-secret',
+            'x-tenant': 'acme',
+          },
+        },
+      },
+    ]);
+
+    const turn = await session.doPromptTurn({
+      skills: [],
+      tools: [],
+      prompt: 'Hello',
+      emit: () => {},
+    });
+    const channel = harnessUtilsMocks.channels.at(-1)!;
+    expect(channel.sent.at(-1)).toMatchObject({ type: 'start' });
+    expect(channel.sent.at(-1)).not.toHaveProperty('headers');
+    channel.emit('finish', { type: 'finish' });
+    await turn.done;
+
+    await session.doDetach();
+  });
+
   it('keeps GitLab OAuth and AI access tokens outside a brokered sandbox', async () => {
     harnessUtilsMocks.waitForBridgeReady.mockResolvedValueOnce({ port: 4000 });
     const dataDirectory = await mkdtemp(join(tmpdir(), 'opencode-data-'));

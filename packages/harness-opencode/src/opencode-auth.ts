@@ -31,13 +31,17 @@ export function createOpenCodeRequestTransformations({
   sandboxEnv: sandboxEnvironment,
   auth: authenticationMode,
 }: HarnessV1RequestTransformationSources<OpenCodeResolvedAuthenticationMode>): HarnessV1RequestTransformation[] {
+  const matchUrl = resolveOpenCodeRequestUrl({
+    env: environment,
+    auth: authenticationMode,
+  });
   switch (authenticationMode) {
     case 'ai-gateway':
       return environment.AI_GATEWAY_API_KEY &&
         sandboxEnvironment.AI_GATEWAY_API_KEY
         ? [
             createCredentialRequestTransformation({
-              matchUrl: environment.AI_GATEWAY_BASE_URL,
+              matchUrl,
               matchHeaders: {
                 'x-api-key': sandboxEnvironment.AI_GATEWAY_API_KEY,
               },
@@ -46,7 +50,7 @@ export function createOpenCodeRequestTransformations({
               },
             }),
             createCredentialRequestTransformation({
-              matchUrl: environment.AI_GATEWAY_BASE_URL,
+              matchUrl,
               matchHeaders: {
                 Authorization: `Bearer ${sandboxEnvironment.AI_GATEWAY_API_KEY}`,
               },
@@ -60,8 +64,7 @@ export function createOpenCodeRequestTransformations({
       return environment.OPENAI_API_KEY && sandboxEnvironment.OPENAI_API_KEY
         ? [
             createCredentialRequestTransformation({
-              matchUrl:
-                environment.OPENAI_BASE_URL ?? 'https://api.openai.com/v1',
+              matchUrl,
               matchHeaders: {
                 Authorization: `Bearer ${sandboxEnvironment.OPENAI_API_KEY}`,
               },
@@ -72,8 +75,6 @@ export function createOpenCodeRequestTransformations({
           ]
         : [];
     case 'anthropic': {
-      const matchUrl =
-        environment.ANTHROPIC_BASE_URL ?? 'https://api.anthropic.com';
       const transformations: HarnessV1RequestTransformation[] = [];
 
       if (
@@ -117,7 +118,7 @@ export function createOpenCodeRequestTransformations({
         environment,
         sandboxEnvironment,
         environmentVariableName: 'XAI_API_KEY',
-        matchUrl: environment.XAI_BASE_URL ?? 'https://api.x.ai/v1',
+        matchUrl,
       });
     case 'github-copilot':
       return createBearerTransformation({
@@ -127,29 +128,56 @@ export function createOpenCodeRequestTransformations({
           environment.GITHUB_COPILOT_TOKEN != null
             ? 'GITHUB_COPILOT_TOKEN'
             : 'GITHUB_TOKEN',
-        matchUrl: 'https://api.githubcopilot.com',
+        matchUrl,
       });
     case 'poe':
       return createBearerTransformation({
         environment,
         sandboxEnvironment,
         environmentVariableName: 'POE_API_KEY',
-        matchUrl: 'https://api.poe.com',
+        matchUrl,
       });
     case 'opencode-go':
       return createBearerTransformation({
         environment,
         sandboxEnvironment,
         environmentVariableName: 'OPENCODE_API_KEY',
-        matchUrl: 'https://opencode.ai/zen/go/v1',
+        matchUrl,
       });
     case 'gitlab':
       return createBearerTransformation({
         environment,
         sandboxEnvironment,
         environmentVariableName: 'GITLAB_TOKEN',
-        matchUrl: environment.GITLAB_INSTANCE_URL ?? 'https://gitlab.com',
+        matchUrl,
       });
+  }
+}
+
+export function resolveOpenCodeRequestUrl({
+  env: environment,
+  auth: authenticationMode,
+}: {
+  env: Readonly<Record<string, string>>;
+  auth: OpenCodeResolvedAuthenticationMode;
+}): string {
+  switch (authenticationMode) {
+    case 'ai-gateway':
+      return environment.AI_GATEWAY_BASE_URL;
+    case 'openai':
+      return environment.OPENAI_BASE_URL ?? 'https://api.openai.com/v1';
+    case 'anthropic':
+      return environment.ANTHROPIC_BASE_URL ?? 'https://api.anthropic.com';
+    case 'xai':
+      return environment.XAI_BASE_URL ?? 'https://api.x.ai/v1';
+    case 'github-copilot':
+      return 'https://api.githubcopilot.com';
+    case 'poe':
+      return 'https://api.poe.com';
+    case 'opencode-go':
+      return 'https://opencode.ai/zen/go/v1';
+    case 'gitlab':
+      return environment.GITLAB_INSTANCE_URL ?? 'https://gitlab.com';
   }
 }
 

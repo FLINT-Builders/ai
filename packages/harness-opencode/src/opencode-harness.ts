@@ -24,6 +24,7 @@ import {
   type HarnessV1StreamPart,
 } from '@ai-sdk/harness';
 import {
+  addRequestTransformationHeaders,
   applyCredentialForwarding,
   classifyDiskLog,
   createSandboxCredentialEnvironment,
@@ -62,6 +63,7 @@ import {
   createOpenCodeRequestTransformations,
   OPENCODE_CREDENTIAL_ENVIRONMENT_VARIABLES,
   OPENCODE_SUBSCRIPTION_ACCESS_TOKEN_ENVIRONMENT_VARIABLE,
+  resolveOpenCodeRequestUrl,
   type OpenCodeAuthenticationMode,
 } from './opencode-auth';
 import {
@@ -376,9 +378,6 @@ export function createOpenCode(
             openCodeConfig: settings.openCodeConfig,
             sandboxAccessToken: sandboxSubscriptionAccessToken,
             aiGatewayUrl: directAccess.aiGatewayUrl,
-            ...(startOpts.headers == null
-              ? {}
-              : { headers: startOpts.headers }),
           });
           transformModel = model =>
             resolveOpenCodeGitLabSubscriptionModel({
@@ -396,6 +395,15 @@ export function createOpenCode(
                   sandboxAccessToken: sandboxSubscriptionAccessToken,
                 });
         }
+        // Brokered request headers are applied here, never inside the sandbox.
+        requestTransformations = addRequestTransformationHeaders({
+          transformations: requestTransformations,
+          headers: startOpts.headers,
+          matchUrl: resolveOpenCodeRequestUrl({
+            env: resolvedAuthEnvironment,
+            auth: authenticationMode,
+          }),
+        });
         if (requestTransformations.length > 0) {
           await sandboxSession.addRequestTransformations(
             requestTransformations,
@@ -403,6 +411,9 @@ export function createOpenCode(
         }
         credentialsBrokered = true;
       }
+      const sandboxHeaders = credentialsBrokered
+        ? undefined
+        : startOpts.headers;
       const bootstrapDir = path.posix.resolve(
         defaultWorkingDirectory,
         BOOTSTRAP_DIR,
@@ -467,7 +478,7 @@ export function createOpenCode(
             reasoningVariant: settings.reasoningVariant,
             openCodeConfig: resolvedOpenCodeConfig,
             mcpServers: settings.mcpServers,
-            headers: startOpts.headers,
+            headers: sandboxHeaders,
             openCodeSessionId: resumeSessionId,
             isResume: true,
             seedResumeSessionOnFirstPrompt: false,
@@ -646,7 +657,7 @@ export function createOpenCode(
         reasoningVariant: settings.reasoningVariant,
         openCodeConfig: resolvedOpenCodeConfig,
         mcpServers: settings.mcpServers,
-        headers: startOpts.headers,
+        headers: sandboxHeaders,
         openCodeSessionId: resumeSessionId,
         isResume: respawnStrategy !== undefined,
         seedResumeSessionOnFirstPrompt: respawnStrategy !== undefined,
