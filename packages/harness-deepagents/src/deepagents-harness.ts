@@ -19,6 +19,7 @@ import {
   type HarnessV1StreamPart,
 } from '@ai-sdk/harness';
 import {
+  addRequestTransformationHeaders,
   applyCredentialForwarding,
   createBridgeToken,
   createSandboxCredentialEnvironment,
@@ -280,10 +281,16 @@ export function createDeepAgents(
           ...resolvedAuthEnvironment,
           ...sandboxCredentialEnvironment,
         };
-        const requestTransformations = createDeepAgentsRequestTransformations({
-          env: resolvedAuthEnvironment,
-          sandboxEnv: sandboxAuthEnvironment,
-          auth: authenticationMode,
+        const requestTransformations = addRequestTransformationHeaders({
+          transformations: createDeepAgentsRequestTransformations({
+            env: resolvedAuthEnvironment,
+            sandboxEnv: sandboxAuthEnvironment,
+            auth: authenticationMode,
+          }),
+          headers: startOpts.headers,
+          matchUrl:
+            resolvedAuthEnvironment.ANTHROPIC_BASE_URL ??
+            'https://api.anthropic.com',
         });
         if (requestTransformations.length > 0) {
           await sandboxSession.addRequestTransformations(
@@ -292,6 +299,10 @@ export function createDeepAgents(
         }
         credentialsBrokered = true;
       }
+      // Brokered request headers are applied by the host-side transformations.
+      const sandboxHeaders = credentialsBrokered
+        ? undefined
+        : startOpts.headers;
       const bootstrapDir = posix.resolve(
         defaultWorkingDirectory,
         BOOTSTRAP_DIR,
@@ -367,7 +378,7 @@ export function createDeepAgents(
             builtinToolFiltering: startOpts.builtinToolFiltering,
             recursionLimit: settings.recursionLimit,
             mcpServers: settings.mcpServers,
-            headers: startOpts.headers,
+            headers: sandboxHeaders,
           });
         } catch {
           // Bridge no longer reachable — recover by respawning below.
@@ -491,7 +502,7 @@ export function createDeepAgents(
         builtinToolFiltering: startOpts.builtinToolFiltering,
         recursionLimit: settings.recursionLimit,
         mcpServers: settings.mcpServers,
-        headers: startOpts.headers,
+        headers: sandboxHeaders,
       });
     },
   };

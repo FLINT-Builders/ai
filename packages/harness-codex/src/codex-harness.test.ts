@@ -436,7 +436,8 @@ describe('createCodex adapter', () => {
     await session.doDestroy();
   });
 
-  it('passes headers to the bridge for Gateway and direct auth', async () => {
+  it('applies brokered headers outside the sandbox for Gateway and direct auth', async () => {
+    const gatewayTransformations = vi.fn(async () => {});
     const gatewaySession = await createCodex({
       auth: { AI_GATEWAY_API_KEY: 'gateway-key' },
     }).doStart({
@@ -447,6 +448,7 @@ describe('createCodex adapter', () => {
         runs: [],
         spawns: [],
         writes: [],
+        addRequestTransformations: gatewayTransformations,
       }),
       sessionWorkDir: '/vercel/sandbox/codex-gateway',
     });
@@ -459,13 +461,20 @@ describe('createCodex adapter', () => {
     void Promise.resolve(gatewayControl.done).catch(() => {});
 
     await vi.waitFor(() => {
-      expect(sentMessages.at(-1)).toMatchObject({
-        type: 'start',
-        headers: { 'x-tenant': 'acme' },
-      });
+      expect(sentMessages.at(-1)).toMatchObject({ type: 'start' });
     });
+    expect(sentMessages.at(-1)).not.toHaveProperty('headers');
+    expect(gatewayTransformations).toHaveBeenCalledWith([
+      expect.objectContaining({
+        match: expect.objectContaining({ host: 'ai-gateway.vercel.sh' }),
+        transform: {
+          headers: expect.objectContaining({ 'x-tenant': 'acme' }),
+        },
+      }),
+    ]);
     await gatewaySession.doDestroy();
 
+    const directTransformations = vi.fn(async () => {});
     const directSession = await createCodex({
       auth: { OPENAI_API_KEY: 'openai-key' },
     }).doStart({
@@ -476,6 +485,7 @@ describe('createCodex adapter', () => {
         runs: [],
         spawns: [],
         writes: [],
+        addRequestTransformations: directTransformations,
       }),
       sessionWorkDir: '/vercel/sandbox/codex-direct',
     });
@@ -488,12 +498,52 @@ describe('createCodex adapter', () => {
     void Promise.resolve(directControl.done).catch(() => {});
 
     await vi.waitFor(() => {
+      expect(sentMessages.at(-1)).toMatchObject({ type: 'start' });
+    });
+    expect(sentMessages.at(-1)).not.toHaveProperty('headers');
+    expect(directTransformations).toHaveBeenCalledWith([
+      expect.objectContaining({
+        match: expect.objectContaining({ host: 'api.openai.com' }),
+        transform: {
+          headers: expect.objectContaining({ 'x-tenant': 'acme' }),
+        },
+      }),
+    ]);
+    await directSession.doDestroy();
+  });
+
+  it('passes headers to the bridge when credential brokering is unavailable', async () => {
+    const session = await createCodex({
+      auth: { OPENAI_API_KEY: 'openai-key' },
+    }).doStart({
+      sessionId: 'unbrokered',
+      headers: { 'x-tenant': 'acme' },
+      sandboxSession: {
+        ...fakeNetworkSandboxSessionForStartupSuccess({
+          bridgePortUrl: 'ws://127.0.0.1:1',
+          runs: [],
+          spawns: [],
+          writes: [],
+        }),
+        addRequestTransformations: undefined,
+      },
+      sessionWorkDir: '/vercel/sandbox/codex-unbrokered',
+    });
+    const control = await session.doPromptTurn({
+      skills: [],
+      tools: [],
+      prompt: 'Hello',
+      emit: () => {},
+    });
+    void Promise.resolve(control.done).catch(() => {});
+
+    await vi.waitFor(() => {
       expect(sentMessages.at(-1)).toMatchObject({
         type: 'start',
         headers: { 'x-tenant': 'acme' },
       });
     });
-    await directSession.doDestroy();
+    await session.doDestroy();
   });
 
   it('brokers credentials when the sandbox supports additive request transformations', async () => {

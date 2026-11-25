@@ -27,11 +27,10 @@ export function createCodexRequestTransformations({
   }
   return [
     createCredentialRequestTransformation({
-      matchUrl:
-        environment.OPENAI_BASE_URL ??
-        (authenticationMode === 'ai-gateway'
-          ? DEFAULT_AI_GATEWAY_BASE_URL
-          : DEFAULT_OPENAI_BASE_URL),
+      matchUrl: resolveCodexRequestUrl({
+        env: environment,
+        auth: authenticationMode,
+      }),
       matchHeaders: {
         Authorization: `Bearer ${sandboxEnvironment.CODEX_API_KEY}`,
       },
@@ -40,6 +39,21 @@ export function createCodexRequestTransformations({
       },
     }),
   ];
+}
+
+export function resolveCodexRequestUrl({
+  env: environment,
+  auth: authenticationMode,
+}: {
+  env: Readonly<Record<string, string>>;
+  auth: CodexResolvedAuthenticationMode;
+}): string {
+  return (
+    environment.OPENAI_BASE_URL ??
+    (authenticationMode === 'ai-gateway'
+      ? DEFAULT_AI_GATEWAY_BASE_URL
+      : DEFAULT_OPENAI_BASE_URL)
+  );
 }
 
 export type CodexResolvedAuthenticationMode = 'direct' | 'ai-gateway';

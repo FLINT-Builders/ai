@@ -23,6 +23,7 @@ import {
   type HarnessV1StreamPart,
 } from '@ai-sdk/harness';
 import {
+  addRequestTransformationHeaders,
   applyCredentialForwarding,
   classifyDiskLog,
   createSandboxCredentialEnvironment,
@@ -862,7 +863,7 @@ export function createClaudeCode(
       const resolvedAuthEnvironment = await resolveClaudeCodeAuthentication({
         auth: settings.auth,
       });
-      const claudeEnvironment = {
+      const claudeEnvironment: Record<string, string> = {
         ...resolvedAuthEnvironment,
         /*
          * The Claude Agent SDK does not expose arbitrary model-request
@@ -874,6 +875,9 @@ export function createClaudeCode(
           ? { CLAUDE_AGENT_SDK_CLIENT_APP: CLAUDE_CODE_CLIENT_APP }
           : {}),
         ...settings.env,
+      };
+      let sandboxClaudeEnvironment: Record<string, string> = {
+        ...claudeEnvironment,
         ...(startOpts.headers != null
           ? {
               ANTHROPIC_CUSTOM_HEADERS: Object.entries(startOpts.headers)
@@ -882,7 +886,6 @@ export function createClaudeCode(
             }
           : {}),
       };
-      let sandboxClaudeEnvironment = claudeEnvironment;
       let sandboxCredentialEnvironment: Record<string, string> | undefined;
       if (
         'addRequestTransformations' in sandboxSession &&
@@ -905,12 +908,18 @@ export function createClaudeCode(
           sandboxEnv: sandboxClaudeEnvironment,
           auth: authenticationMode,
         };
-        const requestTransformations = [
-          ...createClaudeCodeRequestTransformations(transformationSources),
-          ...createClaudeCodeSubscriptionRequestTransformations(
-            transformationSources,
-          ),
-        ];
+        // Brokered request headers are applied here, never inside the sandbox.
+        const requestTransformations = addRequestTransformationHeaders({
+          transformations: [
+            ...createClaudeCodeRequestTransformations(transformationSources),
+            ...createClaudeCodeSubscriptionRequestTransformations(
+              transformationSources,
+            ),
+          ],
+          headers: startOpts.headers,
+          matchUrl:
+            claudeEnvironment.ANTHROPIC_BASE_URL ?? 'https://api.anthropic.com',
+        });
         if (requestTransformations.length > 0) {
           await sandboxSession.addRequestTransformations(
             requestTransformations,

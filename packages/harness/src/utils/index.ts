@@ -30,6 +30,7 @@ export {
   createSandboxCredentialEnvironment,
 } from './credential-forwarding';
 export {
+  addRequestTransformationHeaders,
   createCredentialRequestTransformation,
   generateSandboxCredentialPlaceholder,
   isSandboxCredentialPlaceholder,

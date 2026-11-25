@@ -21,6 +21,7 @@ import {
   type HarnessV1StreamPart,
 } from '@ai-sdk/harness';
 import {
+  addRequestTransformationHeaders,
   applyCredentialForwarding,
   classifyDiskLog,
   createBridgeToken,
@@ -55,6 +56,7 @@ import {
   CODEX_CREDENTIAL_ENVIRONMENT_VARIABLES,
   DEFAULT_OPENAI_BASE_URL,
   resolveCodexAuthenticationMode,
+  resolveCodexRequestUrl,
   type CodexAuthenticationMode,
 } from './codex-auth';
 import {
@@ -296,13 +298,19 @@ export function createCodex(
           ...resolvedAuthEnvironment,
           ...sandboxCredentialEnvironment,
         };
-        const requestTransformations =
-          createCodexSubscriptionRequestTransformations({
+        const requestTransformations = addRequestTransformationHeaders({
+          transformations: createCodexSubscriptionRequestTransformations({
             env: resolvedAuthEnvironment,
             sandboxEnv: sandboxAuthEnvironment,
             auth: authenticationMode,
             requestHeaders: resolvedAuthentication.requestHeaders,
-          });
+          }),
+          headers: startOpts.headers,
+          matchUrl: resolveCodexRequestUrl({
+            env: resolvedAuthEnvironment,
+            auth: authenticationMode,
+          }),
+        });
         if (requestTransformations.length > 0) {
           await sandboxSession.addRequestTransformations(
             requestTransformations,
@@ -323,6 +331,10 @@ export function createCodex(
           sandboxAuthEnvironment.OPENAI_BASE_URL = DEFAULT_OPENAI_BASE_URL;
         }
       }
+      // Brokered request headers are applied by the host-side transformations.
+      const sandboxHeaders = credentialsBrokered
+        ? undefined
+        : startOpts.headers;
       const bootstrapDir = path.posix.resolve(
         defaultWorkingDirectory,
         BOOTSTRAP_DIR,
@@ -396,7 +408,7 @@ export function createCodex(
             webSearch: settings.webSearch,
             codexConfig: settings.codexConfig,
             mcpServers: settings.mcpServers,
-            headers: startOpts.headers,
+            headers: sandboxHeaders,
             resumeThreadId: resumeThreadIdString,
             isResume: true,
             seedResumeThreadOnFirstPrompt: false,
@@ -560,7 +572,7 @@ export function createCodex(
         webSearch: settings.webSearch,
         codexConfig: settings.codexConfig,
         mcpServers: settings.mcpServers,
-        headers: startOpts.headers,
+        headers: sandboxHeaders,
         resumeThreadId: resumeThreadIdString,
         isResume: respawnStrategy !== undefined,
         seedResumeThreadOnFirstPrompt: respawnStrategy !== undefined,

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  addRequestTransformationHeaders,
   createCredentialRequestTransformation,
   generateSandboxCredentialPlaceholder,
   isSandboxCredentialPlaceholder,
@@ -250,5 +251,52 @@ describe('createCredentialRequestTransformation', () => {
         headers: { Authorization: 'Bearer real-secret' },
       },
     });
+  });
+});
+
+describe('addRequestTransformationHeaders', () => {
+  it('returns the transformations unchanged without headers', () => {
+    expect(
+      addRequestTransformationHeaders({
+        transformations: [transformation],
+        headers: undefined,
+        matchUrl: 'https://api.example.com/v1',
+      }),
+    ).toEqual([transformation]);
+  });
+
+  it('merges headers into every transformation, overriding by name', () => {
+    expect(
+      addRequestTransformationHeaders({
+        transformations: [transformation],
+        headers: { authorization: 'Bearer header-secret', 'x-tenant': 'acme' },
+        matchUrl: 'https://api.example.com/v1',
+      }),
+    ).toEqual([
+      {
+        match: transformation.match,
+        transform: {
+          headers: {
+            authorization: 'Bearer header-secret',
+            'x-tenant': 'acme',
+          },
+        },
+      },
+    ]);
+  });
+
+  it('adds a URL rule when there is no credential transformation', () => {
+    expect(
+      addRequestTransformationHeaders({
+        transformations: [],
+        headers: { 'x-tenant': 'acme' },
+        matchUrl: 'https://api.example.com/v1/',
+      }),
+    ).toEqual([
+      {
+        match: { host: 'api.example.com', path: { startsWith: '/v1' } },
+        transform: { headers: { 'x-tenant': 'acme' } },
+      },
+    ]);
   });
 });

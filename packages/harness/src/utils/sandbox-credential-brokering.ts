@@ -87,3 +87,55 @@ export function createCredentialRequestTransformation({
     transform: { headers: transformHeaders },
   };
 }
+
+/**
+ * Applies model request headers outside the sandbox security boundary.
+ *
+ * The headers are merged into every transformation, overriding headers of the
+ * same name. Without any transformation, a rule matching `matchUrl` carries
+ * them. Callers must not also forward the headers into the sandbox, since they
+ * can carry credentials.
+ */
+export function addRequestTransformationHeaders({
+  transformations,
+  headers,
+  matchUrl,
+}: {
+  transformations: ReadonlyArray<HarnessV1RequestTransformation>;
+  headers: Readonly<Record<string, string>> | undefined;
+  matchUrl: string;
+}): HarnessV1RequestTransformation[] {
+  if (headers == null || Object.keys(headers).length === 0) {
+    return [...transformations];
+  }
+  if (transformations.length === 0) {
+    const url = new URL(matchUrl);
+    const pathname = url.pathname.replace(/\/+$/, '');
+    return [
+      {
+        match: {
+          host: url.hostname,
+          ...(pathname.length === 0 ? {} : { path: { startsWith: pathname } }),
+        },
+        transform: { headers: { ...headers } },
+      },
+    ];
+  }
+  const overridden = new Set(
+    Object.keys(headers).map(name => name.toLowerCase()),
+  );
+  return transformations.map(transformation => ({
+    ...transformation,
+    transform: {
+      ...transformation.transform,
+      headers: {
+        ...Object.fromEntries(
+          Object.entries(transformation.transform.headers).filter(
+            ([name]) => !overridden.has(name.toLowerCase()),
+          ),
+        ),
+        ...headers,
+      },
+    },
+  }));
+}

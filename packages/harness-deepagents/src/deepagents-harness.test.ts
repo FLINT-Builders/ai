@@ -347,6 +347,51 @@ describe('createDeepAgents', () => {
     await directSession.doDestroy();
   });
 
+  it('applies brokered headers outside the sandbox', async () => {
+    sentMessages.length = 0;
+    const addRequestTransformations = vi.fn(async () => {});
+    const sandboxSession = fakeSandboxSession();
+    Object.assign(sandboxSession, { addRequestTransformations });
+    const session = await createDeepAgents({
+      auth: { ANTHROPIC_API_KEY: 'anthropic-secret' },
+      credentialForwarding: async options =>
+        `ephemeral-${options.environmentVariableName}`,
+    }).doStart({
+      sessionId: 'brokered-headers',
+      headers: { 'x-tenant': 'acme' },
+      sessionWorkDir: '/vercel/sandbox/deepagents-brokered-headers',
+      sandboxSession,
+    } as unknown as Parameters<
+      ReturnType<typeof createDeepAgents>['doStart']
+    >[0]);
+
+    await session.doPromptTurn({
+      skills: [],
+      tools: [],
+      prompt: 'Hello',
+      emit: () => {},
+    });
+    expect(addRequestTransformations).toHaveBeenCalledWith([
+      {
+        match: {
+          host: 'api.anthropic.com',
+          headers: [
+            {
+              key: { exact: 'x-api-key' },
+              value: { exact: 'ephemeral-ANTHROPIC_API_KEY' },
+            },
+          ],
+        },
+        transform: {
+          headers: { 'x-api-key': 'anthropic-secret', 'x-tenant': 'acme' },
+        },
+      },
+    ]);
+    expect(sentMessages.at(-1)).toMatchObject({ type: 'start' });
+    expect(sentMessages.at(-1)).not.toHaveProperty('headers');
+    await session.doDestroy();
+  });
+
   it('brokers credentials when the sandbox supports additive request transformations', async () => {
     const spawnEnvs: Array<Record<string, string | undefined>> = [];
     const forwardedCredentials: Array<{
