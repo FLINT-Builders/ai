@@ -13,6 +13,7 @@ import {
   WORKFLOW_DESERIALIZE,
 } from '@ai-sdk/provider-utils';
 import { z } from 'zod/v4';
+import { getModelPathSegment } from '@ai-sdk/google/internal';
 import { googleVertexFailedResponseHandler } from './google-vertex-error';
 import {
   googleVertexEmbeddingModelOptions,
@@ -67,6 +68,8 @@ export class GoogleVertexEmbeddingModel implements EmbeddingModelV4 {
   }: Parameters<EmbeddingModelV4['doEmbed']>[0]): Promise<
     Awaited<ReturnType<EmbeddingModelV4['doEmbed']>>
   > {
+    const modelId = getModelPathSegment(this.modelId);
+
     let googleOptions = await parseProviderOptions({
       provider: 'googleVertex',
       providerOptions,
@@ -111,7 +114,7 @@ export class GoogleVertexEmbeddingModel implements EmbeddingModelV4 {
         value: response,
         rawValue,
       } = await postJsonToApi({
-        url: `${this.config.baseURL}/models/${this.modelId}:embedContent`,
+        url: `${this.config.baseURL}/models/${modelId}:embedContent`,
         headers: mergedHeaders,
         body: {
           content: { parts: [{ text: values[0] }] },
@@ -141,7 +144,7 @@ export class GoogleVertexEmbeddingModel implements EmbeddingModelV4 {
       };
     }
 
-    const url = `${this.config.baseURL}/models/${this.modelId}:predict`;
+    const url = `${this.config.baseURL}/models/${modelId}:predict`;
     const {
       responseHeaders,
       value: response,

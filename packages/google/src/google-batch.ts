@@ -202,6 +202,7 @@ export class GoogleBatch implements BatchV4<GoogleBatchModelIds> {
   ): Promise<BatchV4StartResult> {
     assertSupportedBatchRequests(options.requests);
     const modelId = getGoogleBatchModelId(options.requests);
+    const modelPath = getModelPath(modelId);
     const warnings: BatchV4StartResult['warnings'] = [];
     const displayName = `ai-sdk-batch-${this.batchGenerateId()}`;
     const inlinedRequests: Array<{
@@ -287,9 +288,7 @@ export class GoogleBatch implements BatchV4<GoogleBatchModelIds> {
     }
 
     const headers = await this.getHeaders(options.headers);
-    const createUrl = `${this.batchConfig.baseURL}/${getModelPath(
-      modelId,
-    )}:batchGenerateContent`;
+    const createUrl = `${this.batchConfig.baseURL}/${modelPath}:batchGenerateContent`;
 
     if (fileParts == null) {
       const { value: operation } = await postJsonToApi({
