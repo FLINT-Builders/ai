@@ -12,8 +12,8 @@ import {
   type Skill,
   type ToolDefinition,
 } from '@earendil-works/pi-coding-agent';
-import { randomUUID } from 'node:crypto';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Type } from 'typebox';
@@ -315,6 +315,29 @@ async function isWorkspaceAvailableOnHost({
   }
 }
 
+/**
+ * Creates this session's host-side state directory. The session id is
+ * caller-controlled, so it is never used as a path segment: the directory is
+ * named from its digest and created exclusively, which keeps it a direct child
+ * of the Pi base that only this session instance owns and later removes.
+ */
+async function createPiHostRoot(sessionId: string): Promise<string> {
+  const baseDir = path.join(tmpdir(), 'ai-sdk-harness', 'pi');
+  await mkdir(baseDir, { recursive: true });
+  const sessionKey = createHash('sha256').update(sessionId).digest('hex');
+  const hostRoot = await mkdtemp(path.join(baseDir, `${sessionKey}-`));
+  if (
+    path.dirname(hostRoot) !== baseDir ||
+    !path.basename(hostRoot).startsWith(`${sessionKey}-`)
+  ) {
+    await rm(hostRoot, { recursive: true, force: true }).catch(() => {});
+    throw new Error(
+      `Pi host directory ${JSON.stringify(hostRoot)} must be a direct child of ${JSON.stringify(baseDir)}.`,
+    );
+  }
+  return hostRoot;
+}
+
 export async function createPiSession(
   input: CreatePiSessionInput,
 ): Promise<HarnessV1Session> {
@@ -329,11 +352,7 @@ export async function createPiSession(
     }
   }
 
-  // Host-side mirror layout under tmpdir. Replace path-separator characters
-  // that would otherwise turn a session id like `2026-05-29T17:54:27` into a
-  // sub-directory tree on disk.
-  const safeSessionId = input.sessionId.replace(/[\\/: ]/g, '-');
-  const hostRoot = path.join(tmpdir(), 'ai-sdk-harness', 'pi', safeSessionId);
+  const hostRoot = await createPiHostRoot(input.sessionId);
   const hostAgentDir = path.join(hostRoot, 'agent');
   const hostSessionDir = path.join(hostRoot, 'sessions');
   const toolSafeSandboxSession = getRestrictedSandboxSession(
