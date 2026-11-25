@@ -65,6 +65,14 @@ function normalizeRelativePath(inputPath: string): string {
   return relative;
 }
 
+function isInPiScope(relativePath: string): boolean {
+  const [topLevel] = relativePath.split(path.sep);
+  return (
+    (PI_CONFIG_DIRS as readonly string[]).includes(topLevel as string) ||
+    (PI_CONTEXT_FILENAMES as readonly string[]).includes(relativePath)
+  );
+}
+
 async function readCommandOutput(
   sandbox: Experimental_SandboxSession,
   command: string,
@@ -77,7 +85,7 @@ async function readCommandOutput(
         `Sandbox command failed with exit code ${result.exitCode}`,
     );
   }
-  return result.stdout || result.stderr;
+  return result.stdout;
 }
 
 async function listRemoteWorkspaceEntries(
@@ -98,6 +106,12 @@ async function listRemoteWorkspaceEntries(
   // traverse paths below it, including when the symlink is an ancestor of the
   // sandbox work directory, without repeatedly resolving every component of
   // deep ordinary paths.
+  //
+  // Each entry is printed as a tab-separated, newline-terminated record, so an
+  // entry whose mirror path or resolved sandbox path contains a newline, tab,
+  // or carriage return cannot be represented and is skipped. Printing it
+  // would let a crafted filename forge extra records that choose both the
+  // sandbox file to read and the mirror path to store it under.
   const scopedPaths = [
     ...PI_CONFIG_DIRS.map(dir => `./${dir}`),
     ...PI_CONTEXT_FILENAMES.map(name => `./${name}`),
@@ -120,6 +134,7 @@ async function listRemoteWorkspaceEntries(
     '  ancestors=${pi_config_ancestors[$pi_config_index]}',
     '  resolve_ancestors=${pi_config_resolve_ancestors[$pi_config_index]}',
     '  pi_config_index=$((pi_config_index + 1))',
+    `  case "$relative$source" in *$'\\n'*|*$'\\t'*|*$'\\r'*) continue ;; esac`,
     '  if [ "$resolve_ancestors" = 1 ] || [ -L "$source" ]; then',
     '    pending=$source',
     '    resolved=',
@@ -172,6 +187,7 @@ async function listRemoteWorkspaceEntries(
     '      continue',
     '    fi',
     '    source=$resolved',
+    `    case "$source" in *$'\\n'*|*$'\\t'*|*$'\\r'*) continue ;; esac`,
     '  fi',
     '  if [ -d "$source" ]; then',
     '    case "$ancestors" in',
@@ -211,14 +227,23 @@ async function listRemoteWorkspaceEntries(
   const directories: string[] = [];
   const files: Array<{ relativePath: string; sandboxPath: string }> = [];
 
-  for (const line of output.split('\n').filter(Boolean)) {
-    const [kind, rawPath, sandboxPath] = line.split('\t', 3);
+  for (const line of output.split('\n')) {
+    if (line === '' || line.includes('\r')) continue;
+    const fields = line.split('\t');
+    const [kind, rawPath, sandboxPath] = fields;
     if (!rawPath) continue;
 
-    const relativePath = normalizeRelativePath(rawPath);
-    if (kind === 'd') directories.push(relativePath);
-    else if (kind === 'f' && sandboxPath) {
-      files.push({ relativePath, sandboxPath });
+    if (kind === 'd' && fields.length === 2) {
+      const relativePath = normalizeRelativePath(rawPath);
+      if (isInPiScope(relativePath)) directories.push(relativePath);
+    } else if (
+      kind === 'f' &&
+      fields.length === 3 &&
+      sandboxPath &&
+      path.posix.isAbsolute(sandboxPath)
+    ) {
+      const relativePath = normalizeRelativePath(rawPath);
+      if (isInPiScope(relativePath)) files.push({ relativePath, sandboxPath });
     }
   }
 
