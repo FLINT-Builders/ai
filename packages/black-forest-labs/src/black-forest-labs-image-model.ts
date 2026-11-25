@@ -18,6 +18,7 @@ import {
 import { z } from 'zod/v4';
 import {
   bflFailedResponseHandler,
+  getModelUrl,
   isTrustedUrl,
 } from './black-forest-labs-api';
 import { blackForestLabsImageModelOptionsSchema } from './black-forest-labs-image-model-options';
@@ -187,6 +188,10 @@ export class BlackForestLabsImageModel implements ImageModelV4 {
   }: Parameters<ImageModelV4['doGenerate']>[0]): Promise<
     Awaited<ReturnType<ImageModelV4['doGenerate']>>
   > {
+    const url = getModelUrl({
+      baseURL: this.config.baseURL,
+      modelId: this.modelId,
+    });
     const { body, warnings, bflOptions } = await this.getArgs({
       prompt,
       files,
@@ -207,7 +212,7 @@ export class BlackForestLabsImageModel implements ImageModelV4 {
     );
 
     const submit = await postJsonToApi({
-      url: `${this.config.baseURL}/${this.modelId}`,
+      url,
       headers: combinedHeaders,
       body,
       failedResponseHandler: bflFailedResponseHandler,
