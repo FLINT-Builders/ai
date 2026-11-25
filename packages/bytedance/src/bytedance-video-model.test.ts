@@ -124,10 +124,10 @@ describe('ByteDanceVideoModel', () => {
         expected: undefined,
       },
       {
-        name: 'raw passthrough',
+        name: 'no callback for a raw URL',
         webhookUrl: undefined,
         rawUrl: 'https://example.com/raw',
-        expected: 'https://example.com/raw',
+        expected: undefined,
       },
       {
         name: 'explicit URL overrides raw',
@@ -1420,6 +1420,43 @@ describe('ByteDanceVideoModel', () => {
         custom_param: 'custom_value',
         another_param: 123,
       });
+    });
+
+    it('should not pass through request fields set by the SDK', async () => {
+      const model = createBasicModel();
+
+      const result = await model.doStart({
+        ...defaultOptions,
+        providerOptions: {
+          bytedance: {
+            model: 'other-model',
+            content: [{ type: 'text', text: 'other prompt' }],
+            ratio: '9:16',
+            duration: 12,
+            seed: 999,
+            resolution: '1080p',
+            callback_url: 'https://example.com/other',
+            custom_param: 'custom_value',
+          },
+        },
+      });
+
+      expect(await server.calls[0].requestBodyJson).toStrictEqual({
+        model: 'seedance-1-0-pro-250528',
+        content: [{ type: 'text', text: prompt }],
+        custom_param: 'custom_value',
+      });
+      expect(
+        result.warnings.map(w => ('feature' in w ? w.feature : w.type)),
+      ).toStrictEqual([
+        'providerOptions.bytedance.model',
+        'providerOptions.bytedance.content',
+        'providerOptions.bytedance.ratio',
+        'providerOptions.bytedance.duration',
+        'providerOptions.bytedance.seed',
+        'providerOptions.bytedance.resolution',
+        'providerOptions.bytedance.callback_url',
+      ]);
     });
 
     it('should not pass legacy poll options through to the request body', async () => {

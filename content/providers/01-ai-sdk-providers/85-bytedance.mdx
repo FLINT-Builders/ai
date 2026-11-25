@@ -183,7 +183,9 @@ type them with `ByteDanceImageModelOptions`.
 
 <Note>
   Additional ModelArk fields can also be passed through
-  `providerOptions.bytedance` and are validated by ModelArk.
+  `providerOptions.bytedance` and are validated by ModelArk. Fields the SDK sets
+  itself (such as `model`, `prompt`, `image`, and `response_format`) are ignored
+  with a warning.
 </Note>
 
 ### Image Model Capabilities
@@ -387,8 +389,8 @@ const { video } = await generateVideo({
 
 Use `experimental_startVideo({ model, prompt, webhookUrl })` to register an
 application-owned callback receiver. The SDK forwards `webhookUrl` as
-`callback_url`, taking precedence over `providerOptions.bytedance.callback_url`.
-When `webhookUrl` is omitted, a raw `callback_url` is passed through unchanged.
+`callback_url`. A raw `providerOptions.bytedance.callback_url` is ignored with a
+warning.
 
 The [BytePlus callback protocol](https://docs.byteplus.com/en/docs/ModelArk/1520757)
 sends progress notifications (`'queued'` or `'running'`) as well as terminal

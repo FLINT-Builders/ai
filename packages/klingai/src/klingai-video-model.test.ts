@@ -431,6 +431,41 @@ describe('KlingAIVideoModel', () => {
   });
 
   describe('doStart - text-to-video', () => {
+    it('should not pass through request fields set by the SDK', async () => {
+      const model = createBasicModel({ modelId: 'kling-v2.6-t2v' });
+
+      const result = await model.doStart({
+        ...t2vDefaultOptions,
+        providerOptions: {
+          klingai: {
+            mode: 'std',
+            model_name: 'other-model',
+            prompt: 'other prompt',
+            aspect_ratio: '9:16',
+            duration: '10',
+            callback_url: 'https://example.com/other',
+            external_task_id: 'task-1',
+          },
+        },
+      });
+
+      expect(await server.calls[0].requestBodyJson).toStrictEqual({
+        model_name: 'kling-v2-6',
+        prompt,
+        mode: 'std',
+        external_task_id: 'task-1',
+      });
+      expect(
+        result.warnings.map(w => ('feature' in w ? w.feature : w.type)),
+      ).toStrictEqual([
+        'providerOptions.klingai.model_name',
+        'providerOptions.klingai.prompt',
+        'providerOptions.klingai.aspect_ratio',
+        'providerOptions.klingai.duration',
+        'providerOptions.klingai.callback_url',
+      ]);
+    });
+
     it('should POST to /v1/videos/text2video endpoint', async () => {
       const model = createBasicModel({ modelId: 'kling-v2.6-t2v' });
 
@@ -1288,10 +1323,10 @@ describe('KlingAIVideoModel', () => {
           expected: undefined,
         },
         {
-          name: 'raw passthrough',
+          name: 'no callback for a raw URL',
           webhookUrl: undefined,
           rawUrl: 'https://example.com/raw',
-          expected: 'https://example.com/raw',
+          expected: undefined,
         },
         {
           name: 'explicit URL overrides raw',

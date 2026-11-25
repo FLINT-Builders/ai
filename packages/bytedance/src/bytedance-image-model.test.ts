@@ -144,6 +144,44 @@ describe('ByteDanceImageModel', () => {
       });
     });
 
+    it('should not pass through request fields set by the SDK', async () => {
+      const model = createBasicModel();
+
+      const result = await model.doGenerate(
+        createDefaultGenerateParams({
+          providerOptions: {
+            bytedance: {
+              model: 'other-model',
+              prompt: 'other prompt',
+              image: 'https://example.com/other.png',
+              output_format: 'jpeg',
+              response_format: 'url',
+              seed: 42,
+            },
+          },
+        }),
+      );
+
+      const body = await server.calls[0].requestBodyJson;
+      expect(body).toMatchObject({
+        model: 'seedream-5-0-260128',
+        prompt,
+        response_format: 'b64_json',
+        seed: 42,
+      });
+      expect(body).not.toHaveProperty('image');
+      expect(body).not.toHaveProperty('output_format');
+      expect(
+        result.warnings.map(w => ('feature' in w ? w.feature : w.type)),
+      ).toStrictEqual([
+        'providerOptions.bytedance.model',
+        'providerOptions.bytedance.prompt',
+        'providerOptions.bytedance.image',
+        'providerOptions.bytedance.output_format',
+        'providerOptions.bytedance.response_format',
+      ]);
+    });
+
     it('should warn for unsupported settings (aspectRatio, seed, mask)', async () => {
       const model = createBasicModel();
 

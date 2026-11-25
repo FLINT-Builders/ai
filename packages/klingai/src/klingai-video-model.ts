@@ -193,6 +193,40 @@ const HANDLED_PROVIDER_OPTIONS = new Set([
   'watermarkEnabled',
 ]);
 
+/**
+ * Request fields the SDK derives from call options, typed provider options, or
+ * `webhookUrl`. Raw provider option pass-through must never set them, so that
+ * forwarded provider options cannot change the model, prompt, media, call
+ * settings, or callback destination.
+ */
+const SDK_OWNED_REQUEST_FIELDS = new Set([
+  'model_name',
+  'prompt',
+  'negative_prompt',
+  'image',
+  'image_tail',
+  'image_list',
+  'image_url',
+  'video_url',
+  'aspect_ratio',
+  'duration',
+  'sound',
+  'cfg_scale',
+  'mode',
+  'camera_control',
+  'static_mask',
+  'dynamic_masks',
+  'multi_shot',
+  'shot_type',
+  'multi_prompt',
+  'element_list',
+  'voice_list',
+  'watermark_info',
+  'character_orientation',
+  'keep_original_sound',
+  'callback_url',
+]);
+
 interface KlingAIVideoModelConfig {
   provider: string;
   baseURL: string;
@@ -550,7 +584,7 @@ export class KlingAIVideoModel implements VideoModelV4 {
       });
     }
 
-    this.addPassthroughOptions(body, klingaiOptions);
+    this.addPassthroughOptions(body, klingaiOptions, warnings);
 
     return body;
   }
@@ -658,7 +692,7 @@ export class KlingAIVideoModel implements VideoModelV4 {
       });
     }
 
-    this.addPassthroughOptions(body, klingaiOptions);
+    this.addPassthroughOptions(body, klingaiOptions, warnings);
 
     return body;
   }
@@ -724,7 +758,7 @@ export class KlingAIVideoModel implements VideoModelV4 {
       });
     }
 
-    this.addPassthroughOptions(body, klingaiOptions);
+    this.addPassthroughOptions(body, klingaiOptions, warnings);
 
     return body;
   }
@@ -797,7 +831,7 @@ export class KlingAIVideoModel implements VideoModelV4 {
       });
     }
 
-    this.addPassthroughOptions(body, klingaiOptions);
+    this.addPassthroughOptions(body, klingaiOptions, warnings);
 
     return body;
   }
@@ -805,12 +839,24 @@ export class KlingAIVideoModel implements VideoModelV4 {
   private addPassthroughOptions(
     body: Record<string, unknown>,
     klingaiOptions: KlingAIVideoModelOptions | undefined,
+    warnings: SharedV4Warning[],
   ): void {
     if (!klingaiOptions) return;
     for (const [key, value] of Object.entries(klingaiOptions)) {
-      if (!HANDLED_PROVIDER_OPTIONS.has(key)) {
-        body[key] = value;
+      if (HANDLED_PROVIDER_OPTIONS.has(key)) {
+        continue;
       }
+      if (SDK_OWNED_REQUEST_FIELDS.has(key)) {
+        warnings.push({
+          type: 'unsupported',
+          feature: `providerOptions.klingai.${key}`,
+          details:
+            `\`${key}\` is set by the SDK and cannot be passed through ` +
+            'provider options. Use the corresponding call or provider option instead.',
+        });
+        continue;
+      }
+      body[key] = value;
     }
   }
 }
