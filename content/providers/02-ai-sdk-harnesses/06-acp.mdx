@@ -344,7 +344,9 @@ concrete modes or config options against the session response. When a mapping is
 configured, any ACP permission request that still occurs becomes a Harness
 approval request. Without a mapping, the adapter automatically selects
 `allow_once` for tool kinds allowed by `permissionMode` and requests Harness
-approval for the rest. A rejection selects `reject_once`; persistent choices
+approval for the rest. `read`, `search`, and `think` count as reads; `fetch`
+retrieves external data and requires approval in every mode except
+`allow-all`. A rejection selects `reject_once`; persistent choices
 are never inferred. Host-tool approval remains independent.
 
 ## Complete ACP Harness Implementations

@@ -112,12 +112,18 @@ const PUBLIC_TO_NATIVE: Readonly<Record<string, string>> = {
   agent: 'agent',
 };
 
-const TOOL_KIND: Readonly<Record<string, 'readonly' | 'edit' | 'bash'>> = {
+/*
+ * `network` tools send model-chosen input off the sandbox, so they are never
+ * auto-approved as reads: every mode except `allow-all` asks the host.
+ */
+const TOOL_KIND: Readonly<
+  Record<string, 'readonly' | 'network' | 'edit' | 'bash'>
+> = {
   read: 'readonly',
   glob: 'readonly',
   grep: 'readonly',
   ls: 'readonly',
-  webfetch: 'readonly',
+  webfetch: 'network',
   write: 'edit',
   edit: 'edit',
   bash: 'bash',

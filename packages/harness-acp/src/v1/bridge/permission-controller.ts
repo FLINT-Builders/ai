@@ -133,12 +133,9 @@ function shouldAutoApprove({
   kind: ToolCallUpdate['kind'];
 }): boolean {
   if (permissionMode === 'allow-all') return true;
-  if (
-    kind === 'read' ||
-    kind === 'search' ||
-    kind === 'think' ||
-    kind === 'fetch'
-  ) {
+  // `fetch` retrieves external data with agent-chosen input, so it can carry
+  // workspace content off the sandbox and is never auto-approved as a read.
+  if (kind === 'read' || kind === 'search' || kind === 'think') {
     return true;
   }
   return (
