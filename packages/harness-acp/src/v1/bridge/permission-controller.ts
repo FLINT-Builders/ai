@@ -133,12 +133,8 @@ function shouldAutoApprove({
   kind: ToolCallUpdate['kind'];
 }): boolean {
   if (permissionMode === 'allow-all') return true;
-  if (
-    kind === 'read' ||
-    kind === 'search' ||
-    kind === 'think' ||
-    kind === 'fetch'
-  ) {
+  // `fetch` reaches arbitrary network destinations, so it is not a read.
+  if (kind === 'read' || kind === 'search' || kind === 'think') {
     return true;
   }
   return (

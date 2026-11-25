@@ -112,12 +112,14 @@ const PUBLIC_TO_NATIVE: Readonly<Record<string, string>> = {
   agent: 'agent',
 };
 
+// `webfetch` reaches arbitrary URLs chosen by the model, so it is gated like
+// `bash` rather than treated as a read.
 const TOOL_KIND: Readonly<Record<string, 'readonly' | 'edit' | 'bash'>> = {
   read: 'readonly',
   glob: 'readonly',
   grep: 'readonly',
   ls: 'readonly',
-  webfetch: 'readonly',
+  webfetch: 'bash',
   write: 'edit',
   edit: 'edit',
   bash: 'bash',

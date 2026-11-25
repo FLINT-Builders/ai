@@ -221,12 +221,15 @@ const agent = new HarnessAgent({
 
 Available values are:
 
-- `allow-all`: allow built-in reads, edits, and shell commands. This is the
-  default.
+- `allow-all`: allow built-in reads, edits, shell commands, and web fetches.
+  This is the default.
 - `allow-edits`: allow reads and edits, but request approval for shell commands
-  when the adapter supports built-in approvals.
-- `allow-reads`: allow reads, but request approval for edits and shell commands
-  when the adapter supports built-in approvals.
+  and web fetches when the adapter supports built-in approvals.
+- `allow-reads`: allow reads, but request approval for edits, shell commands,
+  and web fetches when the adapter supports built-in approvals.
+
+Web fetches can send workspace contents to any URL, so they are not treated as
+reads.
 
 Use `toolApproval` for host-executed tools:
 

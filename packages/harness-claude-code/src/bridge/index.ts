@@ -88,14 +88,18 @@ const NATIVE_TO_COMMON: Readonly<Record<string, CommonBuiltinToolName>> = {
   AskUserQuestion: 'askUserQuestions',
 };
 
+/*
+ * `network` tools reach arbitrary URLs chosen by the model, so they can send
+ * workspace data off the sandbox and need approval below `allow-all`.
+ */
 const NATIVE_TOOL_KINDS: Readonly<
-  Record<string, 'readonly' | 'edit' | 'bash'>
+  Record<string, 'readonly' | 'edit' | 'bash' | 'network'>
 > = {
   Read: 'readonly',
   Glob: 'readonly',
   Grep: 'readonly',
   WebSearch: 'readonly',
-  WebFetch: 'readonly',
+  WebFetch: 'network',
   TaskGet: 'readonly',
   TaskList: 'readonly',
   TaskOutput: 'readonly',
@@ -315,9 +319,9 @@ function createPermissionSettings(input: {
     if (
       input.inactiveNativeTools.has(nativeName) ||
       (input.permissionMode === 'allow-reads'
-        ? kind === 'edit' || kind === 'bash'
+        ? kind === 'edit' || kind === 'bash' || kind === 'network'
         : input.permissionMode === 'allow-edits'
-          ? kind === 'bash'
+          ? kind === 'bash' || kind === 'network'
           : false)
     ) {
       askRules.add(`${nativeName}(*)`);
@@ -338,8 +342,10 @@ function nativeToolRequiresApproval(input: {
 }): boolean {
   if (input.permissionMode === 'allow-all') return false;
   const kind = NATIVE_TOOL_KINDS[input.nativeName] ?? 'edit';
-  if (input.permissionMode === 'allow-edits') return kind === 'bash';
-  return kind === 'edit' || kind === 'bash';
+  if (input.permissionMode === 'allow-edits') {
+    return kind === 'bash' || kind === 'network';
+  }
+  return kind === 'edit' || kind === 'bash' || kind === 'network';
 }
 
 async function runTurn(start: StartMessage, turn: BridgeTurn): Promise<void> {
