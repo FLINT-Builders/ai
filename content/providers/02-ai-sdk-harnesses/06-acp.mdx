@@ -131,6 +131,11 @@ try {
   advertised ACP session modes or configuration options. Set an entry to
   `null` when the ACP implementation does not support that mode. When omitted,
   the adapter applies `permissionMode` to ACP permission requests by tool kind.
+- `supportsBuiltinToolApprovals`: set to `false` when the ACP implementation
+  runs built-in tools without sending ACP permission requests and has no
+  `permissionModeMapping`. Permission modes other than `allow-all` then throw
+  `HarnessCapabilityUnsupportedError` instead of going unenforced. Defaults to
+  `true`.
 - `session.meta`: serializable implementation-specific metadata for session
   creation and restoration.
 - `port`: exposed bridge port override.
@@ -574,6 +579,8 @@ export const cursorACPHarness = createACP({
   clientCapabilities: {
     _meta: { parameterizedModelPicker: true },
   },
+  // Cursor runs its built-ins without sending ACP permission requests.
+  supportsBuiltinToolApprovals: false,
   credentialEnv: ['CURSOR_API_KEY'],
   credentialBrokering: ({ env, sandboxEnv }) => {
     if (!env.CURSOR_API_KEY || !sandboxEnv?.CURSOR_API_KEY) return [];
@@ -616,7 +623,7 @@ model provider and routing configured in the Cursor account.
 
 Grok Build exposes ACP directly through `grok agent stdio`. It does not
 advertise ACP session modes for its permission behavior, so this profile omits
-`permissionModeMapping`:
+`permissionModeMapping` and declares built-in approvals unsupported:
 
 ```ts
 import { createACP } from '@ai-sdk/harness-acp';
@@ -638,6 +645,7 @@ export const grokBuildACPHarness = createACP({
     type: 'session-model',
     path: 'modelId',
   },
+  supportsBuiltinToolApprovals: false,
   credentialEnv: ['XAI_API_KEY'],
   credentialBrokering: ({ env, sandboxEnv }) => {
     if (!env.XAI_API_KEY || !sandboxEnv?.XAI_API_KEY) return [];
@@ -679,9 +687,9 @@ export const grokBuildACPHarness = createACP({
 
 Without Gateway credentials, this profile uses direct `XAI_API_KEY`
 authentication. The Gateway environment supplies client name and version attribution.
-Grok Build handles its built-in safe operations internally. For permission
-requests sent through ACP, the adapter applies the configured Harness
-`permissionMode` by tool kind and requests explicit approval for the rest.
+Grok Build may handle built-in operations internally without sending an ACP
+permission request, so this profile sets `supportsBuiltinToolApprovals: false`
+and only accepts `permissionMode: 'allow-all'`.
 
 ## Known Limitations
 

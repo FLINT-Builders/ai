@@ -141,6 +141,16 @@ await runBridge<StartMessage>({
 });
 
 async function runTurn(start: StartMessage, turn: BridgeTurn): Promise<void> {
+  const permissionMode = start.permissionMode ?? 'allow-all';
+  if (
+    permissionMode !== 'allow-all' &&
+    bridgeConfiguration.builtinToolApprovals !== true
+  ) {
+    throw new HarnessBridgeCapabilityUnsupportedError({
+      harnessId: bridgeType,
+      message: `The ${bridgeType} ACP harness does not support built-in tool approval requests; use permissionMode: 'allow-all'.`,
+    });
+  }
   let initialHostToolCatalogRefreshRequired: boolean;
   try {
     ({ initialHostToolCatalogRefreshRequired } = await ensureSession({
@@ -292,7 +302,7 @@ async function runTurn(start: StartMessage, turn: BridgeTurn): Promise<void> {
   const permissionController = createACPPermissionController({
     turn,
     sessionId: activeSession.sessionId,
-    permissionMode: start.permissionMode ?? 'allow-all',
+    permissionMode,
     hasPermissionModeMapping: start.permissionModeMapping != null,
     emitToolCall: emitStreamEvent.permissionToolCall,
     claimHostToolPermission: emitStreamEvent.claimHostToolPermission,

@@ -323,6 +323,9 @@ export function createGrokBuild(
     version: 'v1',
     harnessId: 'grok-build',
     builtinTools: GROK_BUILD_BUILTIN_TOOLS,
+    // Grok Build decides internally which built-ins run without an ACP
+    // permission request, so Harness permission modes cannot be enforced.
+    supportsBuiltinToolApprovals: false,
     askUserQuestions: grokBuildAskUserQuestions,
     clientApp: {
       name: clientAppSegments.join('/'),

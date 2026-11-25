@@ -91,6 +91,7 @@ export type ACPHarnessSettings<
   readonly hostToolMcpTransport?: ACPV1Settings['hostToolMcpTransport'];
   readonly askUserQuestions?: TAskUserQuestions;
   readonly permissionModeMapping?: ACPV1Settings['permissionModeMapping'];
+  readonly supportsBuiltinToolApprovals?: ACPV1Settings['supportsBuiltinToolApprovals'];
   readonly session?: ACPV1Settings['session'];
   readonly mintBridgeToken?: HarnessV1MintBridgeTokenCallback;
 };

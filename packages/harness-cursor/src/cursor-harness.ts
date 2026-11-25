@@ -376,6 +376,8 @@ export function createCursor(
     version: 'v1',
     harnessId: 'cursor',
     builtinTools: CURSOR_BUILTIN_TOOLS,
+    // Cursor CLI runs its built-ins without sending ACP permission requests.
+    supportsBuiltinToolApprovals: false,
     clientApp: {
       name: clientAppSegments.join('/'),
       version: clientAppVersion,

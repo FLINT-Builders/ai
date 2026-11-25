@@ -266,6 +266,9 @@ export function createGitHubCopilot(
     version: 'v1',
     harnessId: 'github-copilot',
     clientApp: GITHUB_COPILOT_CLIENT_APP,
+    // GitHub Copilot built-in approval requests are not supported, so
+    // restrictive Harness permission modes cannot be enforced.
+    supportsBuiltinToolApprovals: false,
     source: {
       type: 'npm-locked',
       packageJson: GITHUB_COPILOT_IMPLEMENTATION_PACKAGE_JSON,
