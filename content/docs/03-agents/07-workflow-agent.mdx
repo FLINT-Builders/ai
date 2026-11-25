@@ -185,6 +185,11 @@ return createUIMessageStreamResponse({
 });
 ```
 
+Error text from model errors and tool failures is replaced with
+`'An error occurred.'` by default. Pass an `onError` function to
+`createModelCallToUIChunkTransform()` to log errors or return a sanitized
+message.
+
 The transform also forwards `reset-step` events emitted by `WorkflowAgent` on
 retries.
 Clients remove partial parts from the failed model-call step before processing

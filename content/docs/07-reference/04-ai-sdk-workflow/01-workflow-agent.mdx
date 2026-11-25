@@ -778,9 +778,24 @@ UI message chunks are not one-to-one, so do not pass a UI chunk index to
 `getReadable`. Negative tail indexes require a durable stream that already
 stores `UIMessageChunk` objects.
 
-### `toUIMessageChunk()`
+By default, model errors, invalid tool calls, and tool execution failures are
+sent to the client with the generic `errorText` `'An error occurred.'` so that
+server error details are not exposed. Pass `onError` to log the error or to
+return a sanitized message:
+
+```ts
+createModelCallToUIChunkTransform({
+  onError: error => {
+    console.error(error);
+    return 'Something went wrong. Please try again.';
+  },
+});
+```
+
+### `toUIMessageChunk(part, options?)`
 
 Converts a single `ModelCallStreamPart` to a `UIMessageChunk`. Returns `undefined` for parts that don't map to UI chunks.
+Accepts the same `onError` option as `createModelCallToUIChunkTransform()`.
 
 ```ts
 import { toUIMessageChunk } from '@ai-sdk/workflow';
