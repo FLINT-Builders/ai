@@ -19,6 +19,7 @@ import {
   type Resolvable,
 } from '@ai-sdk/provider-utils';
 import { z } from 'zod/v4';
+import { getSafePathSegment } from '@ai-sdk/google/internal';
 import { googleVertexFailedResponseHandler } from './google-vertex-error';
 import {
   googleVertexVideoModelOptionsSchema,
@@ -346,13 +347,17 @@ export class GoogleVertexVideoModel implements VideoModelV4 {
   async doStart(
     options: Parameters<NonNullable<VideoModelV4['doStart']>>[0],
   ): Promise<VideoModelV4OperationStartResult> {
+    const url = `${this.config.baseURL}/models/${getSafePathSegment({
+      argument: 'modelId',
+      value: this.modelId,
+    })}:predictLongRunning`;
     const currentDate = this.config._internal?.currentDate?.() ?? new Date();
 
     const { instances, parameters, warnings } =
       await this.buildRequest(options);
 
     const { value: operation, responseHeaders } = await postJsonToApi({
-      url: `${this.config.baseURL}/models/${this.modelId}:predictLongRunning`,
+      url,
       headers: combineHeaders(
         await resolve(this.config.headers),
         options.headers,
@@ -391,11 +396,15 @@ export class GoogleVertexVideoModel implements VideoModelV4 {
   async doStatus(
     options: Parameters<NonNullable<VideoModelV4['doStatus']>>[0],
   ): Promise<VideoModelV4OperationStatusResult> {
+    const url = `${this.config.baseURL}/models/${getSafePathSegment({
+      argument: 'modelId',
+      value: this.modelId,
+    })}:fetchPredictOperation`;
     const currentDate = this.config._internal?.currentDate?.() ?? new Date();
     const { operationName } = options.operation as { operationName: string };
 
     const { value: statusOperation, responseHeaders } = await postJsonToApi({
-      url: `${this.config.baseURL}/models/${this.modelId}:fetchPredictOperation`,
+      url,
       headers: combineHeaders(
         await resolve(this.config.headers),
         options.headers,
