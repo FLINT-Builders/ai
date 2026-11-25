@@ -18,10 +18,9 @@ jobs:
         id: check_team
         run: |
           echo "Checking requested teams..."
-          teams='${{ toJson(github.event.pull_request.requested_teams) }}'
 
           # Check if ai-sdk team is in the requested teams
-          if echo "$teams" | jq -e '.[] | select(.slug == "ai-sdk")' > /dev/null; then
+          if jq -e '.pull_request.requested_teams[]? | select(.slug == "ai-sdk")' "$GITHUB_EVENT_PATH" > /dev/null; then
             echo "ai_sdk_requested=true" >> $GITHUB_OUTPUT
             echo "✅ ai-sdk team was requested for review"
           else
@@ -32,7 +31,14 @@ jobs:
       - name: Send Slack notification
         if: steps.check_team.outputs.ai_sdk_requested == 'true'
         run: |
-          curl ${{ env.SLACK_PR_REVIEW_REQUEST_URL }} -X POST -H "Content-Type: application/json" -d '{"channel_id": "${{ env.CHANNEL_ID }}", "number": "${{ env.NUMBER }}", "title": ${{ toJson(env.TITLE) }}, "url": "${{ env.URL }}"}'
+          payload=$(jq -n \
+            --arg channel_id "$CHANNEL_ID" \
+            --arg number "$NUMBER" \
+            --arg title "$TITLE" \
+            --arg url "$URL" \
+            '{channel_id: $channel_id, number: $number, title: $title, url: $url}')
+
+          curl "$SLACK_PR_REVIEW_REQUEST_URL" -X POST -H "Content-Type: application/json" -d "$payload"
         env:
           SLACK_PR_REVIEW_REQUEST_URL: ${{ secrets.SLACK_PR_REVIEW_REQUEST_URL }}
           CHANNEL_ID: 'C050WU03V3N'
