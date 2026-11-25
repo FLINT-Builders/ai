@@ -19,6 +19,7 @@ import {
 import { z } from 'zod/v4';
 import type { FalImageModelId, FalImageSize } from './fal-image-settings';
 import { falImageModelOptionsSchema } from './fal-image-model-options';
+import { getFalModelPath } from './fal-model-path';
 
 interface FalImageModelConfig {
   provider: string;
@@ -172,7 +173,7 @@ export class FalImageModel implements ImageModelV4 {
 
     const currentDate = this.config._internal?.currentDate?.() ?? new Date();
     const { value, responseHeaders } = await postJsonToApi({
-      url: `${this.config.baseURL}/${this.modelId}`,
+      url: `${this.config.baseURL}/${getFalModelPath(this.modelId)}`,
       headers: combineHeaders(
         this.config.headers ? await resolve(this.config.headers) : undefined,
         options.headers,

@@ -14,6 +14,7 @@ import {
 import { z } from 'zod/v4';
 import type { FalConfig } from './fal-config';
 import { falFailedResponseHandler } from './fal-error';
+import { getFalModelPath } from './fal-model-path';
 import { falSpeechModelOptionsSchema } from './fal-speech-model-options';
 import type { FalSpeechModelId } from './fal-speech-settings';
 
@@ -102,7 +103,7 @@ export class FalSpeechModel implements SpeechModelV4 {
     const { requestBody, warnings } = await this.getArgs(options);
 
     const requestUrl = this.config.url({
-      path: `https://fal.run/${this.modelId}`,
+      path: `https://fal.run/${getFalModelPath(this.modelId)}`,
       modelId: this.modelId,
     });
 
