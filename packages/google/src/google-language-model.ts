@@ -644,6 +644,7 @@ export class GoogleLanguageModel implements LanguageModelV4 {
   async doGenerate(
     options: LanguageModelV4CallOptions,
   ): Promise<LanguageModelV4GenerateResult> {
+    const modelPath = getModelPath(this.modelId);
     const {
       args,
       warnings,
@@ -663,9 +664,7 @@ export class GoogleLanguageModel implements LanguageModelV4 {
       value: response,
       rawValue: rawResponse,
     } = await postJsonToApi({
-      url: `${this.config.baseURL}/${getModelPath(
-        this.modelId,
-      )}:generateContent`,
+      url: `${this.config.baseURL}/${modelPath}:generateContent`,
       headers: mergedHeaders,
       body: args,
       failedResponseHandler: googleFailedResponseHandler,
@@ -696,6 +695,7 @@ export class GoogleLanguageModel implements LanguageModelV4 {
   async doStream(
     options: LanguageModelV4CallOptions,
   ): Promise<LanguageModelV4StreamResult> {
+    const modelPath = getModelPath(this.modelId);
     const {
       args,
       warnings,
@@ -715,9 +715,7 @@ export class GoogleLanguageModel implements LanguageModelV4 {
     );
 
     const { responseHeaders, value: response } = await postJsonToApi({
-      url: `${this.config.baseURL}/${getModelPath(
-        this.modelId,
-      )}:streamGenerateContent?alt=sse`,
+      url: `${this.config.baseURL}/${modelPath}:streamGenerateContent?alt=sse`,
       headers,
       body: args,
       failedResponseHandler: googleFailedResponseHandler,
