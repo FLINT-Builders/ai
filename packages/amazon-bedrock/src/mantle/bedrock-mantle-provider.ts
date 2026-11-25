@@ -23,6 +23,7 @@ import type {
   BedrockMantleChatModelId,
   BedrockMantleResponsesModelId,
 } from './bedrock-mantle-options';
+import { validateAwsRegion } from '../validate-aws-region';
 import { VERSION } from '../version';
 
 export interface BedrockMantleProvider extends ProviderV4 {
@@ -218,12 +219,14 @@ export function createBedrockMantle(
   const getBaseURL = (): string =>
     withoutTrailingSlash(
       options.baseURL ??
-        `https://bedrock-mantle.${loadSetting({
-          settingValue: options.region,
-          settingName: 'region',
-          environmentVariableName: 'AWS_REGION',
-          description: 'AWS region',
-        })}.api.aws/v1`,
+        `https://bedrock-mantle.${validateAwsRegion(
+          loadSetting({
+            settingValue: options.region,
+            settingName: 'region',
+            environmentVariableName: 'AWS_REGION',
+            description: 'AWS region',
+          }),
+        )}.api.aws/v1`,
     ) ?? 'https://bedrock-mantle.us-east-1.api.aws/v1';
 
   const getHeaders = (): Record<string, string | undefined> =>

@@ -23,6 +23,7 @@ import {
   createSigV4FetchFunction,
   type AnthropicAwsCredentials,
 } from './anthropic-aws-fetch';
+import { validateAwsRegion } from './validate-aws-region';
 
 export interface AnthropicAwsProvider extends ProviderV4 {
   /**
@@ -209,12 +210,14 @@ export function createAnthropicAws(
 
   const getBaseURL = (): string =>
     withoutTrailingSlash(options.baseURL) ??
-    `https://aws-external-anthropic.${loadSetting({
-      settingValue: options.region,
-      settingName: 'region',
-      environmentVariableName: 'AWS_REGION',
-      description: 'AWS region',
-    })}.api.aws/v1`;
+    `https://aws-external-anthropic.${validateAwsRegion(
+      loadSetting({
+        settingValue: options.region,
+        settingName: 'region',
+        environmentVariableName: 'AWS_REGION',
+        description: 'AWS region',
+      }),
+    )}.api.aws/v1`;
 
   const getHeaders = (): Record<string, string | undefined> => ({
     'anthropic-version': '2023-06-01',
