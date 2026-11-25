@@ -39,6 +39,7 @@ import {
   openaiFailedResponseHandler,
 } from './openai-error';
 import type { OpenAIConfig } from './openai-config';
+import { encodePathSegment } from './encode-path-segment';
 import { openaiFilesResponseSchema } from './files/openai-files-api';
 import { convertOpenAIResponsesUsage } from './responses/convert-openai-responses-usage';
 import { mapOpenAIResponseFinishReason } from './responses/map-openai-responses-finish-reason';
@@ -354,7 +355,7 @@ export class OpenAIBatch implements BatchV4<OpenAIBatchModelIds> {
   ): Promise<BatchV4CancelResult> {
     await postJsonToApi({
       url: this.getUrl(
-        `/batches/${encodeURIComponent(options.batchId)}/cancel`,
+        `/batches/${getBatchIdPathSegment(options.batchId)}/cancel`,
       ),
       headers: combineHeaders(this.options.config.headers?.(), options.headers),
       body: {},
@@ -435,7 +436,7 @@ export class OpenAIBatch implements BatchV4<OpenAIBatchModelIds> {
     options: BatchV4OperationOptions,
   ): Promise<OpenAIBatchResponse> {
     const { value: batch } = await getFromApi({
-      url: this.getUrl(`/batches/${encodeURIComponent(options.batchId)}`),
+      url: this.getUrl(`/batches/${getBatchIdPathSegment(options.batchId)}`),
       headers: combineHeaders(this.options.config.headers?.(), options.headers),
       failedResponseHandler: openaiFailedResponseHandler,
       successfulResponseHandler: createJsonResponseHandler(
@@ -458,7 +459,7 @@ export class OpenAIBatch implements BatchV4<OpenAIBatchModelIds> {
   }): AsyncGenerator<BatchV4ItemResult> {
     for (const fileId of fileIds) {
       const { value: lines } = await getFromApi({
-        url: this.getUrl(`/files/${encodeURIComponent(fileId)}/content`),
+        url: this.getUrl(`/files/${encodePathSegment(fileId)}/content`),
         headers: combineHeaders(
           this.options.config.headers?.(),
           options.headers,
@@ -914,4 +915,15 @@ async function convertOpenAIBatchResult(
       warnings: [],
     },
   };
+}
+
+function getBatchIdPathSegment(batchId: string): string {
+  if (batchId.trim() === '') {
+    throw new InvalidArgumentError({
+      argument: 'batchId',
+      message: 'OpenAI batch ID must not be empty.',
+    });
+  }
+
+  return encodePathSegment(batchId);
 }
