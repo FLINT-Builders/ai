@@ -124,7 +124,10 @@ import type { ToolOrder } from './tool-order';
 import type { ToolOutput } from './tool-output';
 import type { ToolsContextParameter } from './tools-context-parameter';
 import { maybeSignApproval } from './tool-approval-signature';
-import { validateApprovedToolApprovals } from './validate-tool-approvals';
+import {
+  validateApprovedToolApprovals,
+  validateProviderExecutedToolApprovals,
+} from './validate-tool-approvals';
 
 const originalGenerateId = createIdGenerator({
   prefix: 'aitxt',
@@ -704,7 +707,17 @@ export async function generateText<
     });
 
     try {
-      const initialMessages = initialPrompt.messages;
+      const initialMessages = await validateProviderExecutedToolApprovals<
+        TOOLS,
+        RUNTIME_CONTEXT
+      >({
+        messages: initialPrompt.messages,
+        tools,
+        toolApproval,
+        toolsContext,
+        runtimeContext,
+        toolApprovalSecret: experimental_toolApprovalSecret,
+      });
       const initialResponseMessages: Array<ResponseMessage> = [];
 
       const {
@@ -1099,6 +1112,28 @@ export async function generateText<
               > = {};
               const blockedToolCallIds = new Set<string>();
 
+              const providerToolApprovalSignatures = new Map<string, string>();
+              for (const part of currentModelResponse.content) {
+                if (part.type !== 'tool-approval-request') continue;
+                const toolCall = stepToolCalls.find(
+                  toolCall => toolCall.toolCallId === part.toolCallId,
+                );
+                if (toolCall == null) continue;
+                const signature = await maybeSignApproval({
+                  secret: experimental_toolApprovalSecret,
+                  approvalId: part.approvalId,
+                  toolCallId: toolCall.toolCallId,
+                  toolName: toolCall.toolName,
+                  input: toolCall.input,
+                });
+                if (signature != null) {
+                  providerToolApprovalSignatures.set(
+                    part.approvalId,
+                    signature,
+                  );
+                }
+              }
+
               const modelCallContent = convertLanguageModelContent({
                 content: currentModelResponse.content,
                 toolCalls: stepToolCalls,
@@ -1106,6 +1141,7 @@ export async function generateText<
                 toolApprovalRequests: [],
                 toolApprovalResponses: [],
                 tools,
+                toolApprovalSignatures: providerToolApprovalSignatures,
               });
 
               await notify({
@@ -1433,6 +1469,7 @@ export async function generateText<
                 toolApprovalRequests: Object.values(toolApprovalRequests),
                 toolApprovalResponses,
                 tools,
+                toolApprovalSignatures: providerToolApprovalSignatures,
               });
 
               const stepResponseMessages = await toResponseMessages({

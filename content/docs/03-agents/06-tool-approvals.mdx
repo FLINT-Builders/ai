@@ -318,6 +318,7 @@ Every serverless instance that might handle a request needs the same secret, sin
 **Behavior when configured:**
 
 - Approval requests without a valid signature are rejected (fail-closed)
+- Approvals for provider-executed tools (for example OpenAI MCP tools that require approval) are signed and verified the same way, and the approval policy is re-evaluated, before the approval response is forwarded to the provider
 - No secret configured: approvals work as before (backward compatible)
 - The secret is never sent to the client or included in the stream
 
