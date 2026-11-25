@@ -1435,6 +1435,13 @@ To change a tool's definition, remove the old definition at the end of one reque
   the `tools` option instead.
 </Note>
 
+<Note>
+  `toolChanges`, `clearAt`, and `effort` are only read from model messages that
+  your server constructs. `convertToModelMessages` removes them from the
+  provider metadata of UI system messages, so a client cannot change the tool
+  set or these controls through the chat transcript.
+</Note>
+
 ### MCP Connectors
 
 Anthropic supports connecting to [MCP servers](https://docs.claude.com/en/docs/agents-and-tools/mcp-connector) as part of their execution.

@@ -11,6 +11,7 @@ import {
 } from '@ai-sdk/provider-utils';
 import { createToolModelOutput } from '../prompt/create-tool-model-output';
 import { MessageConversionError } from '../prompt/message-conversion-error';
+import type { ProviderMetadata } from '../types/provider-metadata';
 import { getOwn } from '../util/get-own';
 import {
   getToolName,
@@ -34,6 +35,38 @@ import {
   type UIMessage,
 } from './ui-messages';
 import { warnIfUIMessageHasDeprecatedRawInput } from './warn-if-ui-message-has-deprecated-raw-input';
+
+/**
+ * System message provider options that change the tool set or model behavior
+ * for the rest of the conversation (e.g. Anthropic mid-conversation tool
+ * changes, `clearAt`, and `effort`). UI messages come from the client, so these
+ * options are only accepted on model messages that the server constructs.
+ */
+const serverOnlySystemMessageOptions = new Set([
+  'toolChanges',
+  'clearAt',
+  'effort',
+]);
+
+function removeServerOnlySystemMessageOptions(
+  providerMetadata: ProviderMetadata,
+): ProviderMetadata {
+  // Object.fromEntries defines own properties, so a `__proto__` key cannot
+  // replace the prototype and smuggle the removed options back in.
+  return Object.fromEntries(
+    Object.entries(providerMetadata).map(([provider, options]) => [
+      provider,
+      options != null && typeof options === 'object' && !Array.isArray(options)
+        ? Object.fromEntries(
+            Object.entries(options).filter(
+              ([key]) => !serverOnlySystemMessageOptions.has(key),
+            ),
+          )
+        : options,
+    ]),
+  );
+}
+
 /**
  * Converts an array of UI messages from useChat into an array of ModelMessages that can be used
  * with the AI functions (e.g. `streamText`, `generateText`).
@@ -80,12 +113,14 @@ export async function convertToModelMessages<UI_MESSAGE extends UIMessage>(
           (part): part is TextUIPart => part.type === 'text',
         );
 
-        const providerMetadata = textParts.reduce((acc, part) => {
-          if (part.providerMetadata != null) {
-            return { ...acc, ...part.providerMetadata };
-          }
-          return acc;
-        }, {});
+        const providerMetadata = removeServerOnlySystemMessageOptions(
+          textParts.reduce((acc, part) => {
+            if (part.providerMetadata != null) {
+              return { ...acc, ...part.providerMetadata };
+            }
+            return acc;
+          }, {}),
+        );
 
         modelMessages.push({
           role: 'system',
