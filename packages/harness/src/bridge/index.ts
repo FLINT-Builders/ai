@@ -1,15 +1,21 @@
 // Shared in-sandbox bridge runtime. Adapter `bridge.mjs` bundles re-bundle
 // this module (tsup inlines it; `ws` stays external and resolves from the
 // sandbox-installed node_modules). It owns everything generic to the bridge
-// transport — the WebSocket server, token auth, the in-memory event log +
-// monotonic `seq`, resume replay, and the lifecycle/meta files. Any number of
-// hosts may be connected; exactly one of them owns the event stream, and
-// `start`/`resume` transfer that ownership. The adapter supplies only `onStart`
-// (drive its CLI/SDK and translate to wire events) and lifecycle cleanup hooks.
+// transport — the WebSocket server, token auth, host binding, the in-memory
+// event log + monotonic `seq`, resume replay, and the lifecycle/meta files. Any
+// number of host connections may be open; exactly one of them owns the event
+// stream, and `start`/`resume` transfer that ownership. The adapter supplies
+// only `onStart` (drive its CLI/SDK and translate to wire events) and lifecycle
+// cleanup hooks.
 
 import { appendFile, mkdir, writeFile } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
-import { randomUUID } from 'node:crypto';
+import {
+  createHash,
+  randomBytes,
+  randomUUID,
+  timingSafeEqual,
+} from 'node:crypto';
 import { env as procEnv, pid, stdout } from 'node:process';
 import type { ToolResultPart } from '@ai-sdk/provider-utils';
 import { WebSocketServer, type WebSocket } from 'ws';
@@ -339,8 +345,17 @@ export interface RunBridgeOptions<TStart extends { type: 'start' }> {
   onDestroy?(): void | Promise<void>;
   /** WS port. Defaults to `BRIDGE_WS_PORT` env (0 = OS-assigned). */
   port?: number;
-  /** Auth token. Defaults to `BRIDGE_CHANNEL_TOKEN` env. */
+  /**
+   * Auth token. Prefer {@link tokenSha256} so the token itself never has to
+   * exist inside the sandbox. Defaults to `BRIDGE_CHANNEL_TOKEN` env when no
+   * digest is configured.
+   */
   token?: string;
+  /**
+   * Hex SHA-256 digest of the auth token. Defaults to
+   * `BRIDGE_CHANNEL_TOKEN_SHA256` env.
+   */
+  tokenSha256?: string;
   /** Called with the bound port once the server is listening. */
   onListening?(port: number): void;
   /**
@@ -370,7 +385,24 @@ type InboundControl =
   | { type: 'destroy' }
   | { type: 'resume'; lastSeenEventId: number };
 
+/**
+ * Sent by a host connection that already holds the host lease (a reconnect, or
+ * another host process attaching with persisted coordinates) to be authorized
+ * as a host connection.
+ */
+type ClaimHostMessage = { type: 'claim-host'; hostLease: string };
+
 const WS_OPEN = 1;
+
+function sha256Hex(value: string): string {
+  return createHash('sha256').update(value, 'utf8').digest('hex');
+}
+
+function equalSecrets(a: string, b: string): boolean {
+  const left = Buffer.from(a, 'utf8');
+  const right = Buffer.from(b, 'utf8');
+  return left.length === right.length && timingSafeEqual(left, right);
+}
 
 /**
  * Boot the bridge: bind the WebSocket server, announce `bridge-ready`, and
@@ -390,7 +422,12 @@ export async function runBridge<TStart extends { type: 'start' }>(
 ): Promise<BridgeHandle> {
   const { bridgeType, bridgeStateDir, onStart, onStop, onDestroy } = options;
   const teardownGraceMs = options.turnTeardownGraceMs ?? 10_000;
-  const expectedToken = options.token ?? procEnv.BRIDGE_CHANNEL_TOKEN ?? '';
+  const expectedTokenSha256 = (
+    options.tokenSha256 ??
+    (options.token != null ? sha256Hex(options.token) : undefined) ??
+    procEnv.BRIDGE_CHANNEL_TOKEN_SHA256 ??
+    sha256Hex(procEnv.BRIDGE_CHANNEL_TOKEN ?? '')
+  ).toLowerCase();
   const bridgeWsPort =
     options.port ?? parseInt(procEnv.BRIDGE_WS_PORT ?? '0', 10);
 
@@ -416,6 +453,18 @@ export async function runBridge<TStart extends { type: 'start' }>(
    * the others still exchange control frames, they just get no events.
    */
   let activeSocket: WebSocket | undefined;
+  /*
+   * The auth token only proves a socket may connect. Anything running in the
+   * sandbox may be able to recover it, so it does not make a socket the host.
+   * Host authority is bound per socket: the first socket to send a control
+   * frame becomes a host connection and is sent a random host lease over that
+   * socket alone. From then on a socket is a host connection only after it
+   * presents that lease in `claim-host`; the host persists the lease with its
+   * bridge coordinates to reconnect or attach. `activeSocket` is always one of
+   * these.
+   */
+  const hostSockets = new Set<WebSocket>();
+  let hostLease: string | undefined;
   let isFirstTurn = true;
   let turnAbort: AbortController | undefined;
   let currentUserMessages: InternalBridgeUserMessageQueue | undefined;
@@ -711,6 +760,57 @@ export async function runBridge<TStart extends { type: 'start' }>(
     ) as typeof process.stderr.write;
   };
 
+  // ─── host authorization ─────────────────────────────────────────────
+  /**
+   * Decide whether `ws` may act as the host for `msg`. Returns `true` only when
+   * `msg` should be dispatched; `claim-host` frames are consumed here.
+   */
+  const authorizeHostFrame = (
+    msg: TStart | InboundControl | ClaimHostMessage,
+    ws: WebSocket,
+  ): boolean => {
+    if (hostLease == null) {
+      hostLease = randomBytes(32).toString('hex');
+      hostSockets.add(ws);
+      sendControl(ws, { type: 'bridge-host-lease', hostLease });
+      return msg.type !== 'claim-host';
+    }
+
+    if (msg.type === 'claim-host') {
+      if (
+        typeof msg.hostLease === 'string' &&
+        equalSecrets(msg.hostLease, hostLease)
+      ) {
+        hostSockets.add(ws);
+      } else {
+        sendControl(ws, {
+          type: 'error',
+          error: 'The connection presented an invalid bridge host lease.',
+        });
+      }
+      return false;
+    }
+
+    if (hostSockets.has(ws)) return true;
+
+    if (msg.type === 'user-message') {
+      sendControl(ws, {
+        type: 'user-message-response',
+        messageId: msg.messageId ?? randomUUID(),
+        accepted: false,
+        error: {
+          message: 'The connection does not own the active bridge turn.',
+        },
+      });
+    } else {
+      sendControl(ws, {
+        type: 'error',
+        error: 'The connection is not authorized as the bridge host.',
+      });
+    }
+    return false;
+  };
+
   // ─── inbound routing ────────────────────────────────────────────────
   const handleInbound = async (
     msg: TStart | InboundControl,
@@ -990,7 +1090,11 @@ export async function runBridge<TStart extends { type: 'start' }>(
 
   wss.on('connection', (ws: WebSocket, req: { url?: string }) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
-    if (url.searchParams.get('agent_bridge_token') !== expectedToken) {
+    const presentedToken = url.searchParams.get('agent_bridge_token');
+    if (
+      presentedToken == null ||
+      !equalSecrets(sha256Hex(presentedToken), expectedTokenSha256)
+    ) {
       ws.close(1008, 'unauthorized');
       return;
     }
@@ -1006,11 +1110,11 @@ export async function runBridge<TStart extends { type: 'start' }>(
     });
 
     ws.on('message', (raw: ArrayBufferLike | string) => {
-      let parsed: TStart | InboundControl;
+      let parsed: TStart | InboundControl | ClaimHostMessage;
       try {
         const text =
           typeof raw === 'string' ? raw : Buffer.from(raw).toString('utf8');
-        parsed = JSON.parse(text) as TStart | InboundControl;
+        parsed = JSON.parse(text) as TStart | InboundControl | ClaimHostMessage;
       } catch (err) {
         sendControl(ws, {
           type: 'error',
@@ -1018,10 +1122,23 @@ export async function runBridge<TStart extends { type: 'start' }>(
         });
         return;
       }
-      void handleInbound(parsed, ws);
+      if (
+        parsed == null ||
+        typeof parsed !== 'object' ||
+        typeof parsed.type !== 'string'
+      ) {
+        sendControl(ws, {
+          type: 'error',
+          error: 'protocol error: frame is not a typed message',
+        });
+        return;
+      }
+      if (!authorizeHostFrame(parsed, ws)) return;
+      void handleInbound(parsed as TStart | InboundControl, ws);
     });
 
     ws.on('close', () => {
+      hostSockets.delete(ws);
       // Only the stream owner's close matters; a socket that never claimed it,
       // or that a later `start`/`resume` displaced, closes as a no-op.
       // Crucially we do NOT abort the in-flight turn: it keeps running and its

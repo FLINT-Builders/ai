@@ -40,6 +40,7 @@ import {
   shellQuote,
   warnCredentialBrokeringUnavailable,
   waitForBridgeReady,
+  hashBridgeToken,
   withBridgeToken,
   writeSkills,
   type SandboxChannelReconnectOptions,
@@ -768,6 +769,7 @@ const CLAUDE_CODE_BUILTIN_TOOLS = {
 const claudeCodeBridgeCoordsSchema = z.object({
   port: z.number(),
   token: z.string(),
+  hostLease: z.string().optional(),
   lastSeenEventId: z.number(),
   sandboxId: z.string().optional(),
 });
@@ -1004,6 +1006,7 @@ export function createClaudeCode(
             connect: buildConnect(attachEndpoint),
             outboundSchema: outboundMessageSchema,
             initialLastSeenEventId: coords.lastSeenEventId,
+            initialHostLease: coords.hostLease,
             onDiagnostic,
             onBridgeError,
             reconnect: settings.reconnect,
@@ -1074,7 +1077,7 @@ export function createClaudeCode(
           ? createBridgeToken()
           : settings.mintBridgeToken(sandboxId!);
       const env = {
-        BRIDGE_CHANNEL_TOKEN: token,
+        BRIDGE_CHANNEL_TOKEN_SHA256: hashBridgeToken(token),
         BRIDGE_WS_PORT: String(port),
         ...(respawnStrategy === 'replay'
           ? { BRIDGE_REPLAY_FROM_DISK: '1' }
@@ -1084,7 +1087,7 @@ export function createClaudeCode(
       /*
        * On a fresh start the workdir and bridge-state directory must be
        * created. The env is sent fresh on every spawn —
-       * `BRIDGE_CHANNEL_TOKEN` rotates per start.
+       * `BRIDGE_CHANNEL_TOKEN_SHA256` rotates per start.
        */
       if (respawnStrategy === undefined) {
         await toolSafeSandboxSession.run({
@@ -1872,6 +1875,9 @@ function createSession({
           bridge: {
             port: bridgePort,
             token: bridgeToken,
+            ...(channel.hostLease == null
+              ? {}
+              : { hostLease: channel.hostLease }),
             lastSeenEventId,
             ...(sandboxId == null ? {} : { sandboxId }),
           },
@@ -2031,6 +2037,9 @@ function createSession({
           bridge: {
             port: bridgePort,
             token: bridgeToken,
+            ...(channel.hostLease == null
+              ? {}
+              : { hostLease: channel.hostLease }),
             lastSeenEventId,
             ...(sandboxId == null ? {} : { sandboxId }),
           },

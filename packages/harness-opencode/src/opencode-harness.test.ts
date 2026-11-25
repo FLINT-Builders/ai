@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   HarnessCapabilityUnsupportedError,
   type HarnessV1NetworkSandboxSession,
@@ -351,8 +352,8 @@ describe('createOpenCode adapter', () => {
     });
 
     expect(mintBridgeToken).toHaveBeenCalledExactlyOnceWith('test-sandbox');
-    expect(spawnEnvs.at(0)?.BRIDGE_CHANNEL_TOKEN).toBe(
-      'token-for-test-sandbox',
+    expect(spawnEnvs.at(0)?.BRIDGE_CHANNEL_TOKEN_SHA256).toBe(
+      createHash('sha256').update('token-for-test-sandbox').digest('hex'),
     );
 
     const resumeFrom = await session.doDetach();
@@ -814,7 +815,9 @@ describe('createOpenCode adapter', () => {
     expect(spawns.at(-1)?.env.AI_SDK_HARNESS_CLIENT_APP).toBe(
       'ai-sdk/harness-opencode/0.0.0-test',
     );
-    expect(spawns.at(-1)?.env.BRIDGE_CHANNEL_TOKEN).toMatch(/^[a-f0-9]{64}$/);
+    expect(spawns.at(-1)?.env.BRIDGE_CHANNEL_TOKEN_SHA256).toMatch(
+      /^[a-f0-9]{64}$/,
+    );
     expect(spawns.at(-1)?.command).toContain(
       "node '/workspace/.harness-bootstrap/opencode/bridge.mjs'",
     );

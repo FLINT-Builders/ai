@@ -57,7 +57,11 @@ export {
   type WaitForBridgeReadyOptions,
   type WaitForBridgeReadyResult,
 } from './bridge-ready';
-export { createBridgeToken, withBridgeToken } from './bridge-token';
+export {
+  createBridgeToken,
+  hashBridgeToken,
+  withBridgeToken,
+} from './bridge-token';
 export { createReadBridgeAsset } from './bridge-asset';
 export {
   createBridgeErrorHandler,

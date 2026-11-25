@@ -3,6 +3,7 @@ import {
   type HarnessV1NetworkSandboxSession,
 } from '@ai-sdk/harness';
 import type * as HarnessUtils from '@ai-sdk/harness/utils';
+import { createHash } from 'node:crypto';
 import type * as NodeFsPromises from 'node:fs/promises';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createCodex } from './codex-harness';
@@ -383,12 +384,14 @@ describe('createCodex adapter', () => {
       "mkdir -p '/vercel/sandbox/codex-s1; env > /tmp/workdir-leak #' '/vercel/sandbox/.agent-runs/s1; env > /tmp/leak #/bridge'",
     );
     expect(spawns).toEqual([
-      "node '/vercel/sandbox/.harness-bootstrap/codex/bridge.mjs' --workdir '/vercel/sandbox/codex-s1; env > /tmp/workdir-leak #' --bridge-state-dir '/vercel/sandbox/.agent-runs/s1; env > /tmp/leak #/bridge' --cli-shim-dir '/vercel/sandbox/.agent-runs/s1; env > /tmp/leak #/codex'",
+      "node '/vercel/sandbox/.harness-bootstrap/codex/bridge.mjs' --workdir '/vercel/sandbox/codex-s1; env > /tmp/workdir-leak #' --bridge-state-dir '/vercel/sandbox/.agent-runs/s1; env > /tmp/leak #/bridge' --cli-shim-dir '/vercel/sandbox/.agent-runs/s1; env > /tmp/leak #/codex' --port '4319'",
     ]);
     expect(spawnEnvs.at(0)?.AI_SDK_HARNESS_CLIENT_APP).toBe(
       'ai-sdk/harness-codex/0.0.0-test',
     );
-    expect(spawnEnvs.at(0)?.BRIDGE_CHANNEL_TOKEN).toMatch(/^[a-f0-9]{64}$/);
+    expect(spawnEnvs.at(0)?.BRIDGE_CHANNEL_TOKEN_SHA256).toMatch(
+      /^[a-f0-9]{64}$/,
+    );
     await session.doDestroy();
   });
 
@@ -765,8 +768,8 @@ describe('createCodex adapter', () => {
     });
 
     expect(mintBridgeToken).toHaveBeenCalledExactlyOnceWith('test-sandbox');
-    expect(spawnEnvs.at(0)?.BRIDGE_CHANNEL_TOKEN).toBe(
-      'token-for-test-sandbox',
+    expect(spawnEnvs.at(0)?.BRIDGE_CHANNEL_TOKEN_SHA256).toBe(
+      createHash('sha256').update('token-for-test-sandbox').digest('hex'),
     );
 
     const resumeFrom = await session.doDetach();

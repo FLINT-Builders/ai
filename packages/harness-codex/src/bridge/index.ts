@@ -59,6 +59,7 @@ const cliShimDir = requireArg({
   value: args.cliShimDir,
   name: '--cli-shim-dir',
 });
+const bridgePort = args.port == null ? undefined : parsePort(args.port);
 const HARNESS_CLIENT_APP = procEnv.AI_SDK_HARNESS_CLIENT_APP;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -71,6 +72,7 @@ const threadState: { id: string | undefined } = { id: undefined };
 await runBridge<StartMessage>({
   bridgeType: 'codex',
   bridgeStateDir,
+  ...(bridgePort == null ? {} : { port: bridgePort }),
   onStart: runTurn,
   onStop: () => (threadState.id ? { threadId: threadState.id } : {}),
 });
@@ -194,9 +196,12 @@ async function runTurn(start: StartMessage, turn: BridgeTurn): Promise<void> {
     ...(!usesConfiguredModelProvider && apiBaseUrl
       ? { baseUrl: apiBaseUrl }
       : {}),
+    // Codex runs model-directed shell commands with this environment, so the
+    // bridge's own transport configuration must not be part of it.
     env: Object.fromEntries(
       Object.entries(procEnv).filter(
-        (entry): entry is [string, string] => typeof entry[1] === 'string',
+        (entry): entry is [string, string] =>
+          typeof entry[1] === 'string' && !entry[0].startsWith('BRIDGE_'),
       ),
     ),
     ...(Object.keys(codexConfig).length > 0 ? { config: codexConfig } : {}),
@@ -300,11 +305,13 @@ function parseArgs(args: string[]): {
   workdir?: string;
   bridgeStateDir?: string;
   cliShimDir?: string;
+  port?: string;
 } {
   const out: {
     workdir?: string;
     bridgeStateDir?: string;
     cliShimDir?: string;
+    port?: string;
   } = {};
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--workdir' && i + 1 < args.length) {
@@ -313,9 +320,19 @@ function parseArgs(args: string[]): {
       out.bridgeStateDir = args[++i];
     } else if (args[i] === '--cli-shim-dir' && i + 1 < args.length) {
       out.cliShimDir = args[++i];
+    } else if (args[i] === '--port' && i + 1 < args.length) {
+      out.port = args[++i];
     }
   }
   return out;
+}
+
+function parsePort(value: string): number {
+  const port = Number(value);
+  if (!Number.isInteger(port) || port < 0 || port > 65_535) {
+    emitFatal(`Invalid --port argument: ${value}`);
+  }
+  return port;
 }
 
 function emitFatal(message: string): never {
