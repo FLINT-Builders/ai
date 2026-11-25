@@ -82,6 +82,25 @@ type XaiBatchModelIds = {
 type XaiBatchRequest = TextBatchV4Request<XaiResponsesModelId>;
 type XaiImageBatchRequest = ImageBatchV4Request<XaiImageModelId>;
 
+function encodeBatchIdPathSegment(batchId: string): string {
+  const encodedBatchId = encodeURIComponent(batchId);
+
+  // URL parsing removes dot segments, so these would resolve to the batch
+  // collection or a parent path instead of a single batch.
+  if (
+    encodedBatchId === '' ||
+    encodedBatchId === '.' ||
+    encodedBatchId === '..'
+  ) {
+    throw new InvalidArgumentError({
+      argument: 'batchId',
+      message: `Invalid xAI batch id "${batchId}".`,
+    });
+  }
+
+  return encodedBatchId;
+}
+
 function assertSupportedBatchRequests(
   requests: BatchV4StartOptions<XaiBatchModelIds>['requests'],
 ) {
@@ -370,7 +389,7 @@ export class XaiBatch implements BatchV4<XaiBatchModelIds> {
   ): Promise<BatchV4CancelResult> {
     await postJsonToApi({
       url: this.getUrl(
-        `/batches/${encodeURIComponent(options.batchId)}:cancel`,
+        `/batches/${encodeBatchIdPathSegment(options.batchId)}:cancel`,
       ),
       headers: combineHeaders(this.options.config.headers?.(), options.headers),
       body: {},
@@ -437,7 +456,7 @@ export class XaiBatch implements BatchV4<XaiBatchModelIds> {
     options: BatchV4OperationOptions,
   ): Promise<XaiBatchResponse> {
     const { value: batch } = await getFromApi({
-      url: this.getUrl(`/batches/${encodeURIComponent(options.batchId)}`),
+      url: this.getUrl(`/batches/${encodeBatchIdPathSegment(options.batchId)}`),
       headers: combineHeaders(this.options.config.headers?.(), options.headers),
       failedResponseHandler: xaiFailedResponseHandler,
       successfulResponseHandler: createJsonResponseHandler(
@@ -466,7 +485,7 @@ export class XaiBatch implements BatchV4<XaiBatchModelIds> {
 
       const { value: page } = await getFromApi({
         url: this.getUrl(
-          `/batches/${encodeURIComponent(options.batchId)}/results?${query}`,
+          `/batches/${encodeBatchIdPathSegment(options.batchId)}/results?${query}`,
         ),
         headers: combineHeaders(
           this.options.config.headers?.(),

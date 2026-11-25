@@ -64,6 +64,22 @@ type GoogleBatchModelIds = {
   readonly image: GoogleImageModelId;
 };
 
+function getBatchResourcePath(batchId: string): string {
+  const id = /^batches\/([^/]+)$/.exec(batchId)?.[1];
+  const encodedId = id == null ? undefined : encodeURIComponent(id);
+
+  // URL parsing removes dot segments, so these would resolve to the batch
+  // collection or a parent path instead of a single batch.
+  if (encodedId == null || encodedId === '.' || encodedId === '..') {
+    throw new InvalidArgumentError({
+      argument: 'batchId',
+      message: `Invalid Google batch id "${batchId}".`,
+    });
+  }
+
+  return `batches/${encodedId}`;
+}
+
 function assertSupportedBatchRequests(
   requests: BatchV4StartOptions<GoogleBatchModelIds>['requests'],
 ) {
@@ -409,7 +425,7 @@ export class GoogleBatch implements BatchV4<GoogleBatchModelIds> {
     options: BatchV4OperationOptions,
   ): Promise<BatchV4CancelResult> {
     await postJsonToApi({
-      url: `${this.batchConfig.baseURL}/${options.batchId}:cancel`,
+      url: `${this.batchConfig.baseURL}/${getBatchResourcePath(options.batchId)}:cancel`,
       headers: await this.getHeaders(options.headers),
       body: {},
       failedResponseHandler: googleFailedResponseHandler,
@@ -526,7 +542,7 @@ export class GoogleBatch implements BatchV4<GoogleBatchModelIds> {
     options: BatchV4OperationOptions,
   ): Promise<GoogleBatchOperation> {
     const { value: operation } = await getFromApi({
-      url: `${this.batchConfig.baseURL}/${options.batchId}`,
+      url: `${this.batchConfig.baseURL}/${getBatchResourcePath(options.batchId)}`,
       headers: await this.getHeaders(options.headers),
       failedResponseHandler: googleFailedResponseHandler,
       successfulResponseHandler: createJsonResponseHandler(

@@ -162,6 +162,25 @@ type AnthropicBatchResultLine = InferSchema<
 
 type AnthropicResponse = InferSchema<typeof anthropicResponseSchema>;
 
+function encodeBatchIdPathSegment(batchId: string): string {
+  const encodedBatchId = encodeURIComponent(batchId);
+
+  // URL parsing removes dot segments, so these would resolve to the batch
+  // collection or a parent path instead of a single batch.
+  if (
+    encodedBatchId === '' ||
+    encodedBatchId === '.' ||
+    encodedBatchId === '..'
+  ) {
+    throw new InvalidArgumentError({
+      argument: 'batchId',
+      message: `Invalid Anthropic batch id "${batchId}".`,
+    });
+  }
+
+  return encodedBatchId;
+}
+
 function assertTextBatchRequests(
   requests: BatchV4StartOptions['requests'],
 ): asserts requests is ReadonlyArray<AnthropicBatchRequest> {
@@ -328,7 +347,9 @@ export class AnthropicBatch implements BatchV4<{
     options: BatchV4OperationOptions,
   ): Promise<BatchV4CancelResult> {
     await postJsonToApi({
-      url: this.getBatchUrl(`/${encodeURIComponent(options.batchId)}/cancel`),
+      url: this.getBatchUrl(
+        `/${encodeBatchIdPathSegment(options.batchId)}/cancel`,
+      ),
       headers: await this.getBatchHeaders(options.headers),
       body: {},
       failedResponseHandler: anthropicFailedResponseHandler,
@@ -423,7 +444,7 @@ export class AnthropicBatch implements BatchV4<{
     options: BatchV4OperationOptions,
   ): Promise<AnthropicBatchResponse> {
     const { value: batch } = await getFromApi({
-      url: this.getBatchUrl(`/${encodeURIComponent(options.batchId)}`),
+      url: this.getBatchUrl(`/${encodeBatchIdPathSegment(options.batchId)}`),
       validateUrl: false,
       headers: await this.getBatchHeaders(options.headers),
       failedResponseHandler: anthropicFailedResponseHandler,
