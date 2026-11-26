@@ -39,6 +39,36 @@ interface GoogleVideoModelConfig {
   };
 }
 
+function encodePathSegment(value: string): string {
+  const encodedValue = encodeURIComponent(value);
+
+  // URL parsing normalizes both literal and percent-encoded dot segments.
+  return encodedValue === '.'
+    ? '%252E'
+    : encodedValue === '..'
+      ? '%252E%252E'
+      : encodedValue;
+}
+
+// Long-running operation names have the form `models/{model}/operations/{id}`
+// (or `operations/{id}`); anything else could address an unrelated resource.
+const operationNamePattern = /^(?:models\/[^/]+\/)?operations\/[^/]+$/;
+
+function getOperationPath(operationName: unknown): string {
+  if (
+    typeof operationName !== 'string' ||
+    !operationNamePattern.test(operationName)
+  ) {
+    throw new AISDKError({
+      name: 'GOOGLE_VIDEO_GENERATION_ERROR',
+      message:
+        'Invalid Google video operation: operationName must have the form models/{model}/operations/{id}.',
+    });
+  }
+
+  return operationName.split('/').map(encodePathSegment).join('/');
+}
+
 function getFirstFrameImage(
   options: VideoModelV4CallOptions,
 ): VideoModelV4File | undefined {
@@ -392,11 +422,14 @@ export class GoogleVideoModel implements VideoModelV4 {
     options: Parameters<NonNullable<VideoModelV4['doStatus']>>[0],
   ): Promise<VideoModelV4OperationStatusResult> {
     const currentDate = this.config._internal?.currentDate?.() ?? new Date();
-    const { operationName } = options.operation as { operationName: string };
+    const { operationName } = (options.operation ?? {}) as {
+      operationName?: unknown;
+    };
 
     const { value: statusOperation, responseHeaders } = await getFromApi({
-      url: `${this.config.baseURL}/${operationName}`,
+      url: `${this.config.baseURL}/${getOperationPath(operationName)}`,
       validateUrl: false,
+      credentialedOrigin: this.config.baseURL,
       headers: combineHeaders(
         await resolve(this.config.headers),
         options.headers,

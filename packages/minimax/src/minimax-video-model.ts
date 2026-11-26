@@ -61,6 +61,17 @@ type MiniMaxVideoStatusResult =
       response: VideoModelV4OperationStatusResult['response'];
     };
 
+function encodePathSegment(value: string): string {
+  const encodedValue = encodeURIComponent(value);
+
+  // URL parsing normalizes both literal and percent-encoded dot segments.
+  return encodedValue === '.'
+    ? '%252E'
+    : encodedValue === '..'
+      ? '%252E%252E'
+      : encodedValue;
+}
+
 const DEFAULT_RESOLUTION = '2K';
 const DEFAULT_ASPECT_RATIO = '16:9';
 const DEFAULT_POLL_INTERVAL_MS = 10_000;
@@ -634,13 +645,21 @@ export class MiniMaxVideoModel implements VideoModelV4 {
     options: Parameters<NonNullable<VideoModelV4['doStatus']>>[0],
   ): Promise<MiniMaxVideoStatusResult> {
     const currentDate = this.config._internal?.currentDate?.() ?? new Date();
-    const { taskId, resolvedInputs } =
-      options.operation as MiniMaxVideoOperation;
+    const { taskId, resolvedInputs } = (options.operation ??
+      {}) as MiniMaxVideoOperation;
+    if (typeof taskId !== 'string' || taskId.length === 0) {
+      throw new AISDKError({
+        name: 'MINIMAX_VIDEO_GENERATION_ERROR',
+        message:
+          'Invalid MiniMax video operation: taskId must be a non-empty string.',
+      });
+    }
     const baseURL = this.config.baseURL;
     const { value: statusResponse, responseHeaders } = await getFromApi({
-      url: `${baseURL}/v2/query/video_generation/${encodeURIComponent(taskId)}`,
+      url: `${baseURL}/v2/query/video_generation/${encodePathSegment(taskId)}`,
       validateUrl: true,
       trustedOrigin: baseURL,
+      credentialedOrigin: baseURL,
       headers: combineHeaders(
         await resolve(this.config.headers),
         options.headers,
