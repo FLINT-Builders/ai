@@ -38,6 +38,17 @@ interface AlibabaVideoModelConfig {
   };
 }
 
+function encodePathSegment(value: string): string {
+  const encodedValue = encodeURIComponent(value);
+
+  // URL parsing normalizes both literal and percent-encoded dot segments.
+  return encodedValue === '.'
+    ? '%252E'
+    : encodedValue === '..'
+      ? '%252E%252E'
+      : encodedValue;
+}
+
 // DashScope native API error format (different from OpenAI-compatible endpoint)
 const alibabaVideoErrorSchema = z.object({
   code: z.string().nullish(),
@@ -651,11 +662,19 @@ export class AlibabaVideoModel implements VideoModelV4 {
     options: Parameters<NonNullable<VideoModelV4['doStatus']>>[0],
   ): Promise<VideoModelV4OperationStatusResult> {
     const currentDate = this.config._internal?.currentDate?.() ?? new Date();
-    const { taskId } = options.operation as { taskId: string };
+    const { taskId } = (options.operation ?? {}) as { taskId?: unknown };
+    if (typeof taskId !== 'string' || taskId.length === 0) {
+      throw new AISDKError({
+        name: 'ALIBABA_VIDEO_GENERATION_ERROR',
+        message:
+          'Invalid Alibaba video operation: taskId must be a non-empty string.',
+      });
+    }
 
     const { value: statusResponse, responseHeaders } = await getFromApi({
-      url: `${this.config.baseURL}/api/v1/tasks/${taskId}`,
+      url: `${this.config.baseURL}/api/v1/tasks/${encodePathSegment(taskId)}`,
       validateUrl: false,
+      credentialedOrigin: this.config.baseURL,
       headers: combineHeaders(
         await resolve(this.config.headers),
         options.headers,
