@@ -146,6 +146,19 @@ const modeEndpointMap: Record<KlingAIVideoMode, string> = {
   'motion-control': '/v1/videos/motion-control',
 };
 
+const knownEndpointPaths = new Set(Object.values(modeEndpointMap));
+
+function encodePathSegment(value: string): string {
+  const encodedValue = encodeURIComponent(value);
+
+  // URL parsing normalizes both literal and percent-encoded dot segments.
+  return encodedValue === '.'
+    ? '%252E'
+    : encodedValue === '..'
+      ? '%252E%252E'
+      : encodedValue;
+}
+
 /**
  * Derives the KlingAI API `model_name` from the SDK model ID.
  * Strips the mode suffix and converts dots to hyphens.
@@ -308,15 +321,28 @@ export class KlingAIVideoModel implements VideoModelV4 {
     options: Parameters<NonNullable<VideoModelV4['doStatus']>>[0],
   ): Promise<VideoModelV4OperationStatusResult> {
     const currentDate = this.config._internal?.currentDate?.() ?? new Date();
-    const { taskId, endpointPath } = options.operation as {
-      taskId: string;
-      endpointPath: string;
+    const { taskId, endpointPath } = (options.operation ?? {}) as {
+      taskId?: unknown;
+      endpointPath?: unknown;
     };
+    if (
+      typeof taskId !== 'string' ||
+      taskId.length === 0 ||
+      typeof endpointPath !== 'string' ||
+      !knownEndpointPaths.has(endpointPath)
+    ) {
+      throw new AISDKError({
+        name: 'KLINGAI_VIDEO_GENERATION_ERROR',
+        message:
+          'Invalid KlingAI video operation: expected a non-empty taskId and a known endpointPath.',
+      });
+    }
 
     const { value: statusResponse, responseHeaders } = await getFromApi({
-      url: `${this.config.baseURL}${endpointPath}/${taskId}`,
+      url: `${this.config.baseURL}${endpointPath}/${encodePathSegment(taskId)}`,
       validateUrl: true,
       trustedOrigin: this.config.baseURL,
+      credentialedOrigin: this.config.baseURL,
       headers: combineHeaders(
         await resolve(this.config.headers),
         options.headers,

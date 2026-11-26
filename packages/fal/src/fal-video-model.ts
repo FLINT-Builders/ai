@@ -87,15 +87,13 @@ export class FalVideoModel implements VideoModelV4 {
     options: Parameters<NonNullable<VideoModelV4['doStatus']>>[0],
   ): Promise<VideoModelV4OperationStatusResult> {
     const currentDate = this.config._internal?.currentDate?.() ?? new Date();
-    const { responseUrl, submitUrl } = options.operation as {
+    const { responseUrl } = (options.operation ?? {}) as {
       responseUrl: string;
-      submitUrl: string;
     };
 
     try {
       const { value: response, responseHeaders } = await this.fetchStatus({
         responseUrl,
-        submitUrl,
         headers: options.headers,
         abortSignal: options.abortSignal,
       });
@@ -219,7 +217,7 @@ export class FalVideoModel implements VideoModelV4 {
     },
     body: Record<string, unknown>,
   ): Promise<{ responseUrl: string; submitUrl: string }> {
-    let queuePath = `https://queue.fal.run/fal-ai/${this.normalizedModelId}`;
+    let queuePath = this.getQueuePath();
     if (options.webhookUrl) {
       queuePath += `?fal_webhook=${encodeURIComponent(options.webhookUrl)}`;
     }
@@ -250,22 +248,38 @@ export class FalVideoModel implements VideoModelV4 {
     return { responseUrl, submitUrl };
   }
 
+  private getQueuePath(): string {
+    return `https://queue.fal.run/fal-ai/${this.normalizedModelId}`;
+  }
+
   private async fetchStatus({
     responseUrl,
-    submitUrl,
     headers,
     abortSignal,
   }: {
     responseUrl: string;
-    submitUrl: string;
     headers?: Record<string, string | undefined>;
     abortSignal?: AbortSignal;
   }): Promise<{
     value: FalVideoResponse;
     responseHeaders?: Record<string, string>;
   }> {
+    if (typeof responseUrl !== 'string' || responseUrl.length === 0) {
+      throw new AISDKError({
+        name: 'FAL_VIDEO_GENERATION_ERROR',
+        message:
+          'Invalid fal video operation: responseUrl must be a non-empty string.',
+      });
+    }
+
     const statusUrl = this.config.url({
       path: responseUrl,
+      modelId: this.modelId,
+    });
+    // The operation may be caller-stored, so the credentialed origin is
+    // derived from the model configuration rather than from the operation.
+    const queueUrl = this.config.url({
+      path: this.getQueuePath(),
       modelId: this.modelId,
     });
 
@@ -273,8 +287,8 @@ export class FalVideoModel implements VideoModelV4 {
       url: statusUrl,
       // statusUrl comes from the queue response body.
       validateUrl: true,
-      credentialedOrigin: submitUrl,
-      trustedOrigin: submitUrl,
+      credentialedOrigin: queueUrl,
+      trustedOrigin: queueUrl,
       headers: combineHeaders(this.config.headers?.(), headers),
       failedResponseHandler: async ({ response, url, requestBodyValues }) => {
         const body = await response.clone().json();
