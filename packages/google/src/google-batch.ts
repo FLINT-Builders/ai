@@ -40,6 +40,7 @@ import {
 import { z } from 'zod/v4';
 import { getModelPath } from './get-model-path';
 import { googleFailedResponseHandler } from './google-error';
+import { getGoogleResourcePath } from './google-resource-name';
 import {
   GoogleLanguageModel,
   responseSchema,
@@ -409,7 +410,7 @@ export class GoogleBatch implements BatchV4<GoogleBatchModelIds> {
     options: BatchV4OperationOptions,
   ): Promise<BatchV4CancelResult> {
     await postJsonToApi({
-      url: `${this.batchConfig.baseURL}/${options.batchId}:cancel`,
+      url: `${this.batchConfig.baseURL}/${getGoogleBatchPath(options.batchId)}:cancel`,
       headers: await this.getHeaders(options.headers),
       body: {},
       failedResponseHandler: googleFailedResponseHandler,
@@ -526,7 +527,7 @@ export class GoogleBatch implements BatchV4<GoogleBatchModelIds> {
     options: BatchV4OperationOptions,
   ): Promise<GoogleBatchOperation> {
     const { value: operation } = await getFromApi({
-      url: `${this.batchConfig.baseURL}/${options.batchId}`,
+      url: `${this.batchConfig.baseURL}/${getGoogleBatchPath(options.batchId)}`,
       headers: await this.getHeaders(options.headers),
       failedResponseHandler: googleFailedResponseHandler,
       successfulResponseHandler: createJsonResponseHandler(
@@ -891,6 +892,14 @@ const googleUploadUrlResponseHandler: ResponseHandler<string> = async ({
 
   return { value: uploadUrl };
 };
+
+function getGoogleBatchPath(batchId: unknown): string {
+  return getGoogleResourcePath({
+    name: batchId,
+    argument: 'batchId',
+    layouts: ['batches/*'],
+  });
+}
 
 function getGoogleBatchModelId(
   requests: BatchV4StartOptions<GoogleBatchModelIds>['requests'],
