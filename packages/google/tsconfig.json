@@ -10,7 +10,8 @@
     "build",
     "node_modules",
     "tsup.config.ts",
-    "internal.d.ts"
+    "internal.d.ts",
+    "src/**/*.node.test.ts"
   ],
   "references": [
     {
