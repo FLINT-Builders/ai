@@ -408,8 +408,9 @@ export class GoogleBatch implements BatchV4<GoogleBatchModelIds> {
   async doCancelBatch(
     options: BatchV4OperationOptions,
   ): Promise<BatchV4CancelResult> {
+    const batchUrl = this.getBatchUrl(options.batchId);
     await postJsonToApi({
-      url: `${this.batchConfig.baseURL}/${options.batchId}:cancel`,
+      url: `${batchUrl}:cancel`,
       headers: await this.getHeaders(options.headers),
       body: {},
       failedResponseHandler: googleFailedResponseHandler,
@@ -525,8 +526,9 @@ export class GoogleBatch implements BatchV4<GoogleBatchModelIds> {
   private async retrieveBatch(
     options: BatchV4OperationOptions,
   ): Promise<GoogleBatchOperation> {
+    const batchUrl = this.getBatchUrl(options.batchId);
     const { value: operation } = await getFromApi({
-      url: `${this.batchConfig.baseURL}/${options.batchId}`,
+      url: batchUrl,
       headers: await this.getHeaders(options.headers),
       failedResponseHandler: googleFailedResponseHandler,
       successfulResponseHandler: createJsonResponseHandler(
@@ -782,6 +784,29 @@ export class GoogleBatch implements BatchV4<GoogleBatchModelIds> {
   private getBaseOrigin() {
     return this.batchConfig.baseURL.replace(/\/v1beta$/, '');
   }
+
+  private getBatchUrl(batchId: string) {
+    return `${this.batchConfig.baseURL}/batches/${getGoogleBatchResourceId(batchId)}`;
+  }
+}
+
+/**
+ * Batch ids are sent with the API key, so they must resolve to exactly one
+ * resource under the batches collection: no path separators, dot segments,
+ * percent escapes, custom-method colons, queries, or fragments.
+ */
+function getGoogleBatchResourceId(batchId: string): string {
+  const match = /^batches\/([A-Za-z0-9][A-Za-z0-9._~-]*)$/.exec(batchId);
+
+  if (match == null) {
+    throw new InvalidArgumentError({
+      argument: 'batchId',
+      message:
+        'Google batch ids must have the form "batches/{id}", where {id} contains only letters, digits, ".", "_", "~", or "-".',
+    });
+  }
+
+  return encodeURIComponent(match[1]);
 }
 
 function convertGoogleBatchStatus(
