@@ -1,5 +1,6 @@
 import {
   AISDKError,
+  InvalidArgumentError,
   type Experimental_VideoModelV4 as VideoModelV4,
   type Experimental_VideoModelV4File as VideoModelV4File,
   type Experimental_VideoModelV4OperationStartResult as VideoModelV4OperationStartResult,
@@ -51,6 +52,30 @@ type MiniMaxVideoOperation = {
     referenceVideoIndices: number[];
   };
 };
+
+function encodePathSegment(value: string): string {
+  const encodedValue = encodeURIComponent(value);
+
+  // URL parsing normalizes both literal and percent-encoded dot segments.
+  return encodedValue === '.'
+    ? '%252E'
+    : encodedValue === '..'
+      ? '%252E%252E'
+      : encodedValue;
+}
+
+function parseTaskId(operation: unknown): string {
+  const taskId = (operation as { taskId?: unknown } | null | undefined)?.taskId;
+
+  if (typeof taskId !== 'string' || taskId.length === 0) {
+    throw new InvalidArgumentError({
+      argument: 'operation.taskId',
+      message: 'Invalid MiniMax video task id. Expected a non-empty string.',
+    });
+  }
+
+  return taskId;
+}
 
 // Keep the synchronous API's named errors while exposing status errors as text.
 type MiniMaxVideoStatusResult =
@@ -634,12 +659,13 @@ export class MiniMaxVideoModel implements VideoModelV4 {
     options: Parameters<NonNullable<VideoModelV4['doStatus']>>[0],
   ): Promise<MiniMaxVideoStatusResult> {
     const currentDate = this.config._internal?.currentDate?.() ?? new Date();
-    const { taskId, resolvedInputs } =
-      options.operation as MiniMaxVideoOperation;
+    const taskId = parseTaskId(options.operation);
+    const { resolvedInputs } = options.operation as MiniMaxVideoOperation;
     const baseURL = this.config.baseURL;
     const { value: statusResponse, responseHeaders } = await getFromApi({
-      url: `${baseURL}/v2/query/video_generation/${encodeURIComponent(taskId)}`,
+      url: `${baseURL}/v2/query/video_generation/${encodePathSegment(taskId)}`,
       validateUrl: true,
+      credentialedOrigin: baseURL,
       trustedOrigin: baseURL,
       headers: combineHeaders(
         await resolve(this.config.headers),
