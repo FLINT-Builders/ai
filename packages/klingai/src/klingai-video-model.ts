@@ -1,5 +1,6 @@
 import {
   AISDKError,
+  InvalidArgumentError,
   NoSuchModelError,
   type Experimental_VideoModelV4 as VideoModelV4,
   type Experimental_VideoModelV4CallOptions as VideoModelV4CallOptions,
@@ -145,6 +146,42 @@ const modeEndpointMap: Record<KlingAIVideoMode, string> = {
   mi2v: '/v1/videos/multi-image2video',
   'motion-control': '/v1/videos/motion-control',
 };
+
+const STATUS_ENDPOINT_PATHS = new Set(Object.values(modeEndpointMap));
+
+// The task id is interpolated into a credentialed request path, so it must stay
+// a single opaque segment: no separators, dot segments, or percent escapes.
+const TASK_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
+
+function parseStatusOperation(operation: unknown): {
+  taskId: string;
+  endpointPath: string;
+} {
+  const { taskId, endpointPath } = (operation ?? {}) as {
+    taskId?: unknown;
+    endpointPath?: unknown;
+  };
+
+  if (typeof taskId !== 'string' || !TASK_ID_PATTERN.test(taskId)) {
+    throw new InvalidArgumentError({
+      argument: 'operation.taskId',
+      message:
+        'Invalid KlingAI video task id. Expected a non-empty string of letters, digits, "-" or "_".',
+    });
+  }
+
+  if (
+    typeof endpointPath !== 'string' ||
+    !STATUS_ENDPOINT_PATHS.has(endpointPath)
+  ) {
+    throw new InvalidArgumentError({
+      argument: 'operation.endpointPath',
+      message: 'Invalid KlingAI video endpoint path.',
+    });
+  }
+
+  return { taskId, endpointPath };
+}
 
 /**
  * Derives the KlingAI API `model_name` from the SDK model ID.
@@ -308,14 +345,12 @@ export class KlingAIVideoModel implements VideoModelV4 {
     options: Parameters<NonNullable<VideoModelV4['doStatus']>>[0],
   ): Promise<VideoModelV4OperationStatusResult> {
     const currentDate = this.config._internal?.currentDate?.() ?? new Date();
-    const { taskId, endpointPath } = options.operation as {
-      taskId: string;
-      endpointPath: string;
-    };
+    const { taskId, endpointPath } = parseStatusOperation(options.operation);
 
     const { value: statusResponse, responseHeaders } = await getFromApi({
-      url: `${this.config.baseURL}${endpointPath}/${taskId}`,
+      url: `${this.config.baseURL}${endpointPath}/${encodeURIComponent(taskId)}`,
       validateUrl: true,
+      credentialedOrigin: this.config.baseURL,
       trustedOrigin: this.config.baseURL,
       headers: combineHeaders(
         await resolve(this.config.headers),

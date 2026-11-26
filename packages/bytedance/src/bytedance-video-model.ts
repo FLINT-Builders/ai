@@ -1,5 +1,6 @@
 import {
   AISDKError,
+  InvalidArgumentError,
   type Experimental_VideoModelV4 as VideoModelV4,
   type Experimental_VideoModelV4CallOptions as VideoModelV4CallOptions,
   type Experimental_VideoModelV4File as VideoModelV4File,
@@ -40,6 +41,24 @@ const HANDLED_PROVIDER_OPTIONS = new Set([
   'pollIntervalMs',
   'pollTimeoutMs',
 ]);
+
+// The task id is interpolated into a credentialed request path, so it must stay
+// a single opaque segment: no separators, dot segments, or percent escapes.
+const TASK_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
+
+function parseTaskId(operation: unknown): string {
+  const taskId = (operation as { taskId?: unknown } | null | undefined)?.taskId;
+
+  if (typeof taskId !== 'string' || !TASK_ID_PATTERN.test(taskId)) {
+    throw new InvalidArgumentError({
+      argument: 'operation.taskId',
+      message:
+        'Invalid ByteDance video task id. Expected a non-empty string of letters, digits, "-" or "_".',
+    });
+  }
+
+  return taskId;
+}
 
 const RESOLUTION_MAP: Record<string, string> = {
   '864x496': '480p',
@@ -398,11 +417,12 @@ export class ByteDanceVideoModel implements VideoModelV4 {
     options: Parameters<NonNullable<VideoModelV4['doStatus']>>[0],
   ): Promise<VideoModelV4OperationStatusResult> {
     const currentDate = this.config._internal?.currentDate?.() ?? new Date();
-    const { taskId } = options.operation as { taskId: string };
+    const taskId = parseTaskId(options.operation);
 
     const { value: statusResponse, responseHeaders } = await getFromApi({
-      url: `${this.config.baseURL}/contents/generations/tasks/${taskId}`,
+      url: `${this.config.baseURL}/contents/generations/tasks/${encodeURIComponent(taskId)}`,
       validateUrl: true,
+      credentialedOrigin: this.config.baseURL,
       trustedOrigin: this.config.baseURL,
       headers: combineHeaders(
         await resolve(this.config.headers),
