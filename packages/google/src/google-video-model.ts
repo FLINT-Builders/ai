@@ -22,6 +22,7 @@ import {
 } from '@ai-sdk/provider-utils';
 import { z } from 'zod/v4';
 import { googleFailedResponseHandler } from './google-error';
+import { getGoogleResourcePath } from './google-resource-name';
 import {
   googleVideoModelOptionsSchema,
   type GoogleVideoModelOptions,
@@ -392,10 +393,17 @@ export class GoogleVideoModel implements VideoModelV4 {
     options: Parameters<NonNullable<VideoModelV4['doStatus']>>[0],
   ): Promise<VideoModelV4OperationStatusResult> {
     const currentDate = this.config._internal?.currentDate?.() ?? new Date();
-    const { operationName } = options.operation as { operationName: string };
+    const { operationName } = (options.operation ?? {}) as {
+      operationName?: unknown;
+    };
+    const operationPath = getGoogleResourcePath({
+      name: operationName,
+      argument: 'operation.operationName',
+      layouts: ['operations/*', 'models/*/operations/*'],
+    });
 
     const { value: statusOperation, responseHeaders } = await getFromApi({
-      url: `${this.config.baseURL}/${operationName}`,
+      url: `${this.config.baseURL}/${operationPath}`,
       validateUrl: false,
       headers: combineHeaders(
         await resolve(this.config.headers),

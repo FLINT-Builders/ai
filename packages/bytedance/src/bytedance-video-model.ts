@@ -26,6 +26,17 @@ import {
 } from './bytedance-video-model-options';
 import type { ByteDanceVideoModelId } from './bytedance-video-settings';
 
+function encodePathSegment(value: string): string {
+  const encodedValue = encodeURIComponent(value);
+
+  // URL parsing normalizes both literal and percent-encoded dot segments.
+  return encodedValue === '.'
+    ? '%252E'
+    : encodedValue === '..'
+      ? '%252E%252E'
+      : encodedValue;
+}
+
 const HANDLED_PROVIDER_OPTIONS = new Set([
   'watermark',
   'generateAudio',
@@ -401,7 +412,7 @@ export class ByteDanceVideoModel implements VideoModelV4 {
     const { taskId } = options.operation as { taskId: string };
 
     const { value: statusResponse, responseHeaders } = await getFromApi({
-      url: `${this.config.baseURL}/contents/generations/tasks/${taskId}`,
+      url: `${this.config.baseURL}/contents/generations/tasks/${encodePathSegment(taskId)}`,
       validateUrl: true,
       trustedOrigin: this.config.baseURL,
       headers: combineHeaders(

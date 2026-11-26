@@ -1,5 +1,6 @@
 import {
   AISDKError,
+  InvalidArgumentError,
   NoSuchModelError,
   type Experimental_VideoModelV4 as VideoModelV4,
   type Experimental_VideoModelV4CallOptions as VideoModelV4CallOptions,
@@ -145,6 +146,17 @@ const modeEndpointMap: Record<KlingAIVideoMode, string> = {
   mi2v: '/v1/videos/multi-image2video',
   'motion-control': '/v1/videos/motion-control',
 };
+
+function encodePathSegment(value: string): string {
+  const encodedValue = encodeURIComponent(value);
+
+  // URL parsing normalizes both literal and percent-encoded dot segments.
+  return encodedValue === '.'
+    ? '%252E'
+    : encodedValue === '..'
+      ? '%252E%252E'
+      : encodedValue;
+}
 
 /**
  * Derives the KlingAI API `model_name` from the SDK model ID.
@@ -310,11 +322,21 @@ export class KlingAIVideoModel implements VideoModelV4 {
     const currentDate = this.config._internal?.currentDate?.() ?? new Date();
     const { taskId, endpointPath } = options.operation as {
       taskId: string;
-      endpointPath: string;
+      endpointPath: unknown;
     };
 
+    const statusEndpointPath = Object.values(modeEndpointMap).find(
+      path => path === endpointPath,
+    );
+    if (statusEndpointPath == null) {
+      throw new InvalidArgumentError({
+        argument: 'operation.endpointPath',
+        message: 'Unknown KlingAI video endpoint path.',
+      });
+    }
+
     const { value: statusResponse, responseHeaders } = await getFromApi({
-      url: `${this.config.baseURL}${endpointPath}/${taskId}`,
+      url: `${this.config.baseURL}${statusEndpointPath}/${encodePathSegment(taskId)}`,
       validateUrl: true,
       trustedOrigin: this.config.baseURL,
       headers: combineHeaders(
