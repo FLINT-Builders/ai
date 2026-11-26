@@ -227,14 +227,54 @@ export class ReplicateVideoModel implements VideoModelV4 {
     };
   }
 
+  /**
+   * A credentialed status URL must address a single prediction under the
+   * configured base URL. URLs on other origins are left to `getFromApi`, which
+   * withholds credentials from them.
+   */
+  private getPredictionUrl(getUrl: unknown): string {
+    const invalid = () =>
+      new AISDKError({
+        name: 'REPLICATE_VIDEO_GENERATION_ERROR',
+        message:
+          'Invalid Replicate video operation: getUrl must address a single prediction.',
+      });
+
+    if (typeof getUrl !== 'string' || getUrl.length === 0) {
+      throw invalid();
+    }
+
+    let url: URL;
+    try {
+      url = new URL(getUrl);
+    } catch {
+      throw invalid();
+    }
+
+    const base = new URL(this.config.baseURL);
+    if (url.origin !== base.origin) {
+      return url.toString();
+    }
+
+    const prefix = `${base.pathname.replace(/\/$/, '')}/predictions/`;
+    const id = url.pathname.startsWith(prefix)
+      ? url.pathname.slice(prefix.length)
+      : '';
+    if (url.search !== '' || url.hash !== '' || !/^[^/]+$/.test(id)) {
+      throw invalid();
+    }
+
+    return url.toString();
+  }
+
   async doStatus(
     options: Parameters<NonNullable<VideoModelV4['doStatus']>>[0],
   ): Promise<VideoModelV4OperationStatusResult> {
     const currentDate = this.config._internal?.currentDate?.() ?? new Date();
-    const { getUrl } = options.operation as { getUrl: string };
+    const { getUrl } = (options.operation ?? {}) as { getUrl?: unknown };
 
     const { value: prediction, responseHeaders } = await getFromApi({
-      url: getUrl,
+      url: this.getPredictionUrl(getUrl),
       // getUrl comes from the provider response body.
       validateUrl: true,
       credentialedOrigin: this.config.baseURL,
